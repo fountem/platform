@@ -1,8 +1,25 @@
 {
+  "framework": "nextjs",
+  "buildCommand": "cd ../.. && npx turbo run build --filter=bot",
+  "outputDirectory": "apps/bot/.next",
+  "installCommand": "npm install --legacy-peer-deps",
   "crons": [
     {
       "path": "/api/cron",
       "schedule": "*/5 * * * *"
     }
-  ]
+  ],
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": "@supabase_url",
+    "SUPABASE_SERVICE_ROLE_KEY": "@supabase_service_role_key",
+    "ANTHROPIC_API_KEY": "@anthropic_api_key",
+    "OPENAI_API_KEY": "@openai_api_key",
+    "HIVE_API_KEY": "@hive_api_key",
+    "X_API_KEY": "@x_api_key",
+    "X_API_SECRET": "@x_api_secret",
+    "X_ACCESS_TOKEN": "@x_access_token",
+    "X_ACCESS_TOKEN_SECRET": "@x_access_token_secret",
+    "X_BEARER_TOKEN": "@x_bearer_token",
+    "CRON_SECRET": "@cron_secret"
+  }
 }
