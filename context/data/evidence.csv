@@ -1,0 +1,3 @@
+evidence_id,claim_id,source_org,source_title,source_url,verdict_context
+ev-ref-imm-001-a,ref-imm-001,Full Fact,Are there 1.2 million illegal immigrants in the UK?,https://fullfact.org/immigration/uk-illegal-migrants-reform,Figure based on 2017 Pew estimate; Pew later acknowledged flawed methodology; revised to 700k-900k
+ev-ref-imm-002-a,ref-imm-002,Full Fact,Reform UK claims about the number of people in the UK illegally,https://fullfact.org/politics/reform-uk-zia-yusuf-million-migrants/,No official UK estimate since mid-2000s; Pew methodology acknowledged flawed

@@ -1,0 +1,3 @@
+claim_id,party_id,issue_id,claim_text,claim_date,claim_type,verdict,confidence
+ref-imm-001,ref,local_economy,There are 1.2 million 'illegal immigrants' in the UK.,2025-08-06,statistic,Misleading,High
+ref-imm-002,ref,local_economy,"There are 'north of a million' people in the UK illegally; ~600,000 are men.",2025-09-05,statistic,Unverified,Medium
