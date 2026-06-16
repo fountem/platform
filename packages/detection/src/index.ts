@@ -1,5 +1,5 @@
+export * from './pipeline'
+export * from './synthesiser'
 export * from './layer1-forensic'
 export * from './layer2-provenance'
 export * from './layer3-contextual'
-export * from './synthesiser'
-export * from './pipeline'

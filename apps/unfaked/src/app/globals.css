@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+body {
+  background: #0a0a0a;
+  color: #fafafa;
+  font-family: 'Inter', -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection { background: #ef444440; }
+
+.verdict-card { transition: border-color 0.15s ease; }
+.verdict-card:hover { border-color: #3f3f46; }

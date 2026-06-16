@@ -1,73 +1,62 @@
 import OpenAI from 'openai'
-import { createServiceClient, type SourceType } from '@fountem/db'
 import { chunkDocument } from './chunker'
+import type { SourceType } from '@fountem/db'
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-const BATCH_SIZE = 20
-
-async function generateEmbeddings(texts: string[]): Promise<number[][]> {
-  const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: texts,
-  })
-  return response.data.map(d => d.embedding)
+export interface IngestSourceOptions {
+  sourceType: SourceType
+  title: string
+  url: string
+  publisher: string
+  publishedAt: string
+  rawText: string
+  topicTags?: string[]
+  partyRelevance?: string[]
+  dbClient: any
 }
 
-export async function ingestSource(params: {
-  url: string
-  title: string
-  publisher: string
-  published_at: string
-  source_type: SourceType
-  raw_text: string
-}): Promise<{ source_id: string; chunks_created: number }> {
-  const db = createServiceClient()
+export async function ingestSource(opts: IngestSourceOptions): Promise<{ sourceId: string; chunksIngested: number }> {
+  const { dbClient, rawText, sourceType, title, url, publisher, publishedAt, topicTags = [], partyRelevance = [] } = opts
 
-  // Upsert source record
-  const { data: source, error: sourceError } = await db
+  // Upsert source
+  const { data: source, error: sourceError } = await dbClient
     .from('evidence_sources')
-    .upsert({
-      url: params.url,
-      title: params.title,
-      publisher: params.publisher,
-      published_at: params.published_at,
-      source_type: params.source_type,
-      raw_text: params.raw_text,
-      is_active: true,
-    }, { onConflict: 'url' })
+    .upsert({ source_type: sourceType, title, url, publisher, published_at: publishedAt, raw_text: rawText })
     .select()
     .single()
 
-  if (sourceError || !source) throw new Error(`Source upsert failed: ${sourceError?.message}`)
+  if (sourceError || !source) throw new Error(`Failed to upsert source: ${sourceError?.message}`)
 
-  // Chunk the document
-  const chunks = chunkDocument(params.raw_text)
+  // Chunk document
+  const chunks = chunkDocument(rawText)
 
-  // Delete existing chunks for this source (re-ingestion)
-  await db.from('evidence_chunks').delete().eq('source_id', source.id)
+  // Embed all chunks
+  const texts = chunks.map(c => c.content)
+  const embeddingResponse = await openai.embeddings.create({
+    model: 'text-embedding-3-small',
+    input: texts,
+  })
 
-  // Generate embeddings in batches
-  let chunksCreated = 0
-  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-    const batch = chunks.slice(i, i + BATCH_SIZE)
-    const embeddings = await generateEmbeddings(batch.map(c => c.content))
+  // Insert chunks with embeddings
+  const rows = chunks.map((chunk, i) => ({
+    source_id: source.id,
+    chunk_index: chunk.chunkIndex,
+    content: chunk.content,
+    embedding: embeddingResponse.data[i].embedding,
+    topic_tags: topicTags,
+    party_relevance: partyRelevance,
+  }))
 
-    const rows = batch.map((chunk, idx) => ({
-      source_id: source.id,
-      chunk_index: chunk.chunk_index,
-      content: chunk.content,
-      embedding: JSON.stringify(embeddings[idx]),
-      topic_tags: chunk.topic_tags,
-      party_relevance: chunk.party_relevance,
-    }))
+  // Delete existing chunks for this source (re-ingest)
+  await dbClient.from('evidence_chunks').delete().eq('source_id', source.id)
 
-    const { error: insertError } = await db.from('evidence_chunks').insert(rows)
-    if (insertError) throw new Error(`Chunk insert failed: ${insertError.message}`)
-
-    chunksCreated += batch.length
-    await new Promise(r => setTimeout(r, 200)) // Rate limit
+  // Insert in batches of 50
+  for (let i = 0; i < rows.length; i += 50) {
+    const batch = rows.slice(i, i + 50)
+    const { error } = await dbClient.from('evidence_chunks').insert(batch)
+    if (error) throw new Error(`Failed to insert chunks batch ${i}: ${error.message}`)
   }
 
-  return { source_id: source.id, chunks_created: chunksCreated }
+  return { sourceId: source.id, chunksIngested: chunks.length }
 }

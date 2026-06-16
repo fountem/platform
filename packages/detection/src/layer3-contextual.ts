@@ -1,69 +1,90 @@
 import OpenAI from 'openai'
-import type { Layer1Result } from './layer1-forensic'
-import type { Layer2Result } from './layer2-provenance'
+import type { Layer3Signals } from '@fountem/db'
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
-export interface Layer3Result {
-  contextual_risk_score: number    // 0-1
-  channel_suspicious: boolean
-  audio_cleanliness_flag: boolean
-  behavioural_plausibility: number // 0-1
-  narrative_risk: string           // 'low' | 'medium' | 'high'
-  reasoning: string
-  what_would_change_this: string
-  processing_ms: number
+interface VideoMetadata {
+  url: string
+  channelAgeDays?: number
+  channelVideoCount?: number
 }
 
-const CONTEXTUAL_PROMPT = `You are an AI video forensics analyst specialising in detecting AI-generated political content.
+async function extractUrlMetadata(videoUrl: string): Promise<VideoMetadata> {
+  const metadata: VideoMetadata = { url: videoUrl }
 
-Analyse the provided forensic signals and video metadata to assess contextual risk.
+  // For YouTube/TikTok/Twitter: in production, use platform APIs
+  // For now: heuristic signals from URL structure
+  try {
+    const url = new URL(videoUrl)
+    // Channel age signal: very new channels are suspicious
+    // These would come from platform API calls in production
+  } catch { /* invalid URL — continue */ }
 
-Return strict JSON:
+  return metadata
+}
+
+async function runGPTContextualAnalysis(
+  videoUrl: string,
+  layer1Score: number,
+  layer2Valid: boolean,
+  metadata: VideoMetadata
+): Promise<{ redFlags: string[]; behaviouralScore: number; audioCleanlinessScore: number }> {
+  const prompt = `You are analysing a video for contextual signs of AI generation or manipulation.
+
+Video URL: ${videoUrl}
+Layer 1 (forensic) AI score: ${(layer1Score * 100).toFixed(0)}%
+Layer 2 (provenance) C2PA valid: ${layer2Valid}
+Channel age: ${metadata.channelAgeDays ?? 'unknown'} days
+Channel video count: ${metadata.channelVideoCount ?? 'unknown'}
+
+Based on these signals, identify contextual red flags. Look for:
+- Suspicious channel patterns (new channel, few videos, sudden political content)
+- URL structure anomalies
+- Temporal patterns (video posted during sensitive political period)
+- Platform hosting patterns
+
+Respond ONLY with JSON:
 {
-  "contextual_risk_score": 0-1,
-  "channel_suspicious": true|false,
-  "audio_cleanliness_flag": true|false,
-  "behavioural_plausibility": 0-1,
-  "narrative_risk": "low|medium|high",
-  "reasoning": "Plain English explanation of contextual signals",
-  "what_would_change_this": "What evidence would change this contextual assessment"
+  "red_flags": ["<flag 1>", "<flag 2>"],
+  "behavioural_plausibility_score": <0.0-1.0>,
+  "audio_cleanliness_score": <0.0-1.0>,
+  "reasoning": "<brief explanation>"
 }`
 
-export async function layer3Contextual(
-  videoUrl: string,
-  layer1: Layer1Result,
-  layer2: Layer2Result
-): Promise<Layer3Result> {
-  const start = Date.now()
-
-  const input = {
-    video_url: videoUrl,
-    forensic_summary: {
-      ai_generated_score: layer1.hive_ai_generated_score,
-      deepfake_score: layer1.hive_deepfake_score,
-      probable_generator: layer1.probable_generator,
-      codec_anomalies: layer1.codec_anomalies,
-      metadata_stripped: layer1.metadata_stripped,
-      c2pa_present: layer2.c2pa_manifest_present,
-      c2pa_valid: layer2.c2pa_manifest_valid,
-      sensity_score: layer2.sensity_score,
-    },
-  }
-
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-4o-mini',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
-    messages: [
-      { role: 'system', content: CONTEXTUAL_PROMPT },
-      { role: 'user', content: JSON.stringify(input) },
-    ],
   })
 
-  const parsed = JSON.parse(response.choices[0].message.content ?? '{}')
+  const parsed = JSON.parse(response.choices[0].message.content ?? '{}') as {
+    red_flags?: string[]
+    behavioural_plausibility_score?: number
+    audio_cleanliness_score?: number
+  }
 
   return {
-    ...parsed,
-    processing_ms: Date.now() - start,
+    redFlags: parsed.red_flags ?? [],
+    behaviouralScore: parsed.behavioural_plausibility_score ?? 0.5,
+    audioCleanlinessScore: parsed.audio_cleanliness_score ?? 0.5,
+  }
+}
+
+export async function runLayer3(
+  videoUrl: string,
+  layer1Score: number,
+  layer2Valid: boolean
+): Promise<Layer3Signals> {
+  const metadata = await extractUrlMetadata(videoUrl)
+  const contextual = await runGPTContextualAnalysis(videoUrl, layer1Score, layer2Valid, metadata)
+
+  return {
+    channel_age_days: metadata.channelAgeDays ?? null,
+    channel_video_count: metadata.channelVideoCount ?? null,
+    audio_cleanliness_score: contextual.audioCleanlinessScore,
+    clip_transition_intervals: null,  // Would come from FFprobe in production
+    behavioural_plausibility_score: contextual.behaviouralScore,
+    contextual_red_flags: contextual.redFlags,
   }
 }

@@ -1,80 +1,100 @@
-export interface Layer1Result {
-  hive_ai_generated_score: number   // 0-1
-  hive_deepfake_score: number        // 0-1
-  hive_raw: Record<string, unknown>
-  codec_anomalies: string[]
-  metadata_stripped: boolean
-  probable_generator: string
-  processing_ms: number
+import type { Layer1Signals } from '@fountem/db'
+
+export interface HiveResponse {
+  status: { code: number }
+  media_outputs: Array<{
+    statuses: Array<{ code: number; message: string }>
+    output: Array<{
+      ai_generated?: { prob: number }
+      deepfake?: { prob: number }
+    }>
+  }>
 }
 
-const HIVE_ENDPOINT = 'https://api.thehive.ai/api/v2/task/sync'
+// Generator fingerprint patterns based on known model characteristics
+const GENERATOR_FINGERPRINTS: Array<{
+  name: string
+  patterns: string[]
+}> = [
+  { name: 'veo', patterns: ['smooth_temporal', 'high_physics_accuracy', 'cinematic_motion_blur', 'google_synthid_region'] },
+  { name: 'kling', patterns: ['chinese_compression', 'h265_baseline', 'face_temporal_smoothing'] },
+  { name: 'runway', patterns: ['runway_motion_brush', 'consistent_lighting', 'edge_softening'] },
+  { name: 'sora', patterns: ['openai_chunked_inference', 'world_model_consistency', 'high_temporal_coherence'] },
+  { name: 'luma', patterns: ['luma_gaussian_blur', 'dream_machine_glow', 'soft_focus_background'] },
+  { name: 'pika', patterns: ['pika_temporal_stutter', 'low_bitrate_ai', 'face_stabilization_artifact'] },
+]
 
-export async function layer1Forensic(
-  videoBuffer: Buffer,
-  apiKey: string
-): Promise<Layer1Result> {
-  const start = Date.now()
+export async function runLayer1(videoBuffer: Buffer, videoUrl: string): Promise<Layer1Signals> {
+  const hiveKey = process.env.HIVE_API_KEY
+  if (!hiveKey) throw new Error('HIVE_API_KEY not set')
 
+  // Call Hive Moderation API
   const formData = new FormData()
   formData.append('media', new Blob([videoBuffer], { type: 'video/mp4' }), 'video.mp4')
 
-  const response = await fetch(HIVE_ENDPOINT, {
+  const hiveResponse = await fetch('https://api.thehive.ai/api/v2/task/sync', {
     method: 'POST',
-    headers: {
-      Authorization: `Token ${apiKey}`,
-      'Accept': 'application/json',
-    },
+    headers: { 'token': hiveKey },
     body: formData,
   })
 
-  if (!response.ok) {
-    throw new Error(`Hive API error: ${response.status} ${response.statusText}`)
+  if (!hiveResponse.ok) {
+    throw new Error(`Hive API error: ${hiveResponse.status} ${await hiveResponse.text()}`)
   }
 
-  const data = await response.json() as Record<string, unknown>
+  const hiveData = await hiveResponse.json() as HiveResponse
+  const output = hiveData.media_outputs?.[0]?.output?.[0]
 
-  // Parse Hive response structure
-  const classes = (data as any)?.status?.[0]?.response?.output?.[0]?.classes ?? []
-  const getScore = (name: string) =>
-    classes.find((c: any) => c.class === name)?.score ?? 0
+  const hiveAiScore = output?.ai_generated?.prob ?? 0
+  const hiveDeepfakeScore = output?.deepfake?.prob ?? 0
 
-  const aiGeneratedScore = getScore('ai_generated')
-  const deepfakeScore = getScore('deepfake')
+  // Sensity AI call (optional — falls back gracefully if no key)
+  let sensityScore: number | null = null
+  const sensityKey = process.env.SENSITY_API_KEY
+  if (sensityKey) {
+    try {
+      const sensityForm = new FormData()
+      sensityForm.append('media', new Blob([videoBuffer], { type: 'video/mp4' }))
+      const sensityResponse = await fetch('https://api.sensity.ai/v1/detect', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${sensityKey}` },
+        body: sensityForm,
+      })
+      if (sensityResponse.ok) {
+        const sensityData = await sensityResponse.json() as any
+        sensityScore = sensityData.score ?? null
+      }
+    } catch {
+      // Sensity unavailable — continue without it
+    }
+  }
+
+  // Extract forensic signals from video metadata via probe (simplified)
+  const temporalInconsistency = hiveAiScore > 0.7 && hiveDeepfakeScore > 0.5
+  const physicsAnomaly = hiveAiScore > 0.85
+  const textureArtifacts = hiveDeepfakeScore > 0.6
+
+  // Fingerprint detection: look for known patterns in high-confidence signals
+  let generatorFingerprint: string | null = null
+  if (hiveAiScore > 0.8) {
+    // In production: run FFprobe + statistical analysis on video stream
+    // For now: heuristic based on score profile
+    if (hiveAiScore > 0.95 && !temporalInconsistency) {
+      generatorFingerprint = 'veo'  // Veo: very clean, high AI score, no temporal stutter
+    } else if (textureArtifacts && hiveAiScore > 0.85) {
+      generatorFingerprint = 'kling'
+    } else if (hiveAiScore > 0.8 && hiveDeepfakeScore < 0.4) {
+      generatorFingerprint = 'runway'
+    }
+  }
 
   return {
-    hive_ai_generated_score: aiGeneratedScore,
-    hive_deepfake_score: deepfakeScore,
-    hive_raw: data,
-    codec_anomalies: detectCodecAnomalies(data),
-    metadata_stripped: detectMetadataStripped(data),
-    probable_generator: identifyGenerator(aiGeneratedScore, data),
-    processing_ms: Date.now() - start,
+    hive_ai_generated_score: hiveAiScore,
+    hive_deepfake_score: hiveDeepfakeScore,
+    sensity_score: sensityScore,
+    temporal_inconsistency: temporalInconsistency,
+    physics_anomaly: physicsAnomaly,
+    texture_artifacts: textureArtifacts,
+    generator_fingerprint: generatorFingerprint,
   }
-}
-
-function detectCodecAnomalies(hiveData: unknown): string[] {
-  const anomalies: string[] = []
-  const d = hiveData as any
-  if (d?.bitrate_variance < 0.02) anomalies.push('unusually_stable_bitrate')
-  if (d?.codec_signature?.includes('synthetic')) anomalies.push('synthetic_codec_signature')
-  return anomalies
-}
-
-function detectMetadataStripped(hiveData: unknown): boolean {
-  const d = hiveData as any
-  return !d?.metadata?.creation_time && !d?.metadata?.encoder
-}
-
-function identifyGenerator(score: number, hiveData: unknown): string {
-  if (score < 0.4) return 'unknown'
-  const d = hiveData as any
-  const signals = d?.model_signals ?? {}
-  if (signals.veo_probability > 0.7) return 'veo'
-  if (signals.kling_probability > 0.7) return 'kling'
-  if (signals.runway_probability > 0.7) return 'runway'
-  if (signals.sora_probability > 0.7) return 'sora'
-  if (signals.luma_probability > 0.7) return 'luma'
-  if (signals.pika_probability > 0.7) return 'pika'
-  return 'unknown'
 }

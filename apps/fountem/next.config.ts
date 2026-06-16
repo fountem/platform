@@ -1,7 +1,5 @@
 import type { NextConfig } from 'next'
-
 const config: NextConfig = {
-  transpilePackages: ['@fountem/ui', '@fountem/db', '@fountem/rag', '@fountem/verdict'],
+  transpilePackages: ['@fountem/db', '@fountem/rag', '@fountem/verdict', '@fountem/ui'],
 }
-
 export default config

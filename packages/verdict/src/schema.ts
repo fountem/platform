@@ -1,63 +1,24 @@
-// Shared verdict card schema — used by all apps and the bot
+import type { VerdictValue, DetectionVerdict } from '@fountem/db'
 
-export interface SourceCitation {
-  url: string
-  title: string
-  publisher: string
-  quote: string
-}
-
-export interface VerdictCard {
-  id: string
-  type: 'claim' | 'detection'
-  product: 'fountem' | 'unfaked'
-
-  // Core verdict
-  verdict: string
-  verdict_label: string              // Human-readable: "Mostly False", "AI Generated", etc.
-  verdict_colour: string             // Hex colour for UI rendering
-  confidence_pct: number
-  summary: string
-  what_would_change_this: string
-
-  // Claim-specific
-  claim_text?: string
-  speaker?: string
-  party?: string
-  source_citations?: SourceCitation[]
-
-  // Detection-specific
-  video_url?: string
-  probable_generator?: string
-  probable_generator_label?: string  // "Kling AI", "Google Veo", etc.
-  evasion_detected?: string
-
-  // Sharing
-  correction_pack_url: string        // unfaked.ai/c/{slug}
-  og_image_url?: string              // Pre-rendered 1200×630 OG card
-  share_text: string                 // Pre-written tweet copy
-
-  // Attribution (always present)
-  attribution: string
-  methodology_url: string
-  created_at: string
-}
-
-export const VERDICT_META: Record<string, { label: string; colour: string; emoji: string }> = {
-  // Claim verdicts
-  true:           { label: 'True',           colour: '#16a34a', emoji: '✅' },
-  mostly_true:    { label: 'Mostly True',    colour: '#65a30d', emoji: '🟢' },
-  half_true:      { label: 'Half True',      colour: '#ca8a04', emoji: '🟡' },
-  mostly_false:   { label: 'Mostly False',   colour: '#ea580c', emoji: '🟠' },
-  false:          { label: 'False',          colour: '#dc2626', emoji: '❌' },
-  misleading:     { label: 'Misleading',     colour: '#9333ea', emoji: '⚠️' },
-  unverifiable:   { label: 'Unverifiable',   colour: '#6b7280', emoji: '❓' },
-  inconclusive:   { label: 'Inconclusive',   colour: '#6b7280', emoji: '🔍' },
-  // Detection verdicts
-  ai_generated:         { label: 'AI Generated',        colour: '#dc2626', emoji: '🤖' },
-  likely_ai_generated:  { label: 'Likely AI Generated', colour: '#ea580c', emoji: '⚠️' },
-  likely_real:          { label: 'Likely Real',          colour: '#65a30d', emoji: '🟢' },
-  real:                 { label: 'Real',                 colour: '#16a34a', emoji: '✅' },
+export const VERDICT_META: Record<VerdictValue | DetectionVerdict, {
+  label: string
+  colour: string
+  bgColour: string
+  icon: string
+  sharePrefix: string
+}> = {
+  true:               { label: 'TRUE',              colour: '#22c55e', bgColour: '#052e16', icon: '✓',  sharePrefix: '✅ VERIFIED TRUE' },
+  mostly_true:        { label: 'MOSTLY TRUE',       colour: '#86efac', bgColour: '#052e16', icon: '✓',  sharePrefix: '✅ MOSTLY TRUE' },
+  half_true:          { label: 'HALF TRUE',         colour: '#facc15', bgColour: '#1c1807', icon: '~',  sharePrefix: '⚠️ HALF TRUE' },
+  mostly_false:       { label: 'MOSTLY FALSE',      colour: '#fb923c', bgColour: '#1c0a00', icon: '✗',  sharePrefix: '❌ MOSTLY FALSE' },
+  false:              { label: 'FALSE',             colour: '#ef4444', bgColour: '#1c0000', icon: '✗',  sharePrefix: '❌ FALSE' },
+  misleading:         { label: 'MISLEADING',        colour: '#f97316', bgColour: '#1c0800', icon: '!',  sharePrefix: '⚠️ MISLEADING' },
+  unverifiable:       { label: 'UNVERIFIABLE',      colour: '#94a3b8', bgColour: '#0f172a', icon: '?',  sharePrefix: '❓ UNVERIFIABLE' },
+  inconclusive:       { label: 'INCONCLUSIVE',      colour: '#64748b', bgColour: '#0f172a', icon: '?',  sharePrefix: '❓ INCONCLUSIVE' },
+  ai_generated:       { label: 'AI GENERATED',      colour: '#ef4444', bgColour: '#1c0000', icon: '🤖', sharePrefix: '🤖 AI GENERATED' },
+  likely_ai_generated:{ label: 'LIKELY AI GENERATED', colour: '#f97316', bgColour: '#1c0800', icon: '🤖', sharePrefix: '🤖 LIKELY AI GENERATED' },
+  likely_real:        { label: 'LIKELY REAL',       colour: '#86efac', bgColour: '#052e16', icon: '✓',  sharePrefix: '✅ LIKELY REAL' },
+  real:               { label: 'REAL',              colour: '#22c55e', bgColour: '#052e16', icon: '✓',  sharePrefix: '✅ REAL' },
 }
 
 export const GENERATOR_LABELS: Record<string, string> = {
@@ -68,4 +29,16 @@ export const GENERATOR_LABELS: Record<string, string> = {
   luma:    'Luma Dream Machine',
   pika:    'Pika Labs',
   unknown: 'Unknown Generator',
+}
+
+export const CONFIDENCE_THRESHOLDS = {
+  HIGH:   85,
+  MEDIUM: 60,
+  LOW:    0,
+} as const
+
+export function confidenceLabel(pct: number): 'HIGH' | 'MEDIUM' | 'LOW' {
+  if (pct >= CONFIDENCE_THRESHOLDS.HIGH) return 'HIGH'
+  if (pct >= CONFIDENCE_THRESHOLDS.MEDIUM) return 'MEDIUM'
+  return 'LOW'
 }

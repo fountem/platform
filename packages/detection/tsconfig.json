@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "outDir": "dist", "rootDir": "src", "paths": { "@fountem/db": ["../db/src/index.ts"] } },
+  "include": ["src", "__tests__"]
+}

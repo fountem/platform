@@ -1,154 +1,108 @@
-'use client'
+import type { Metadata } from 'next'
+import { DetectForm } from '../components/DetectForm'
 
-import { useState } from 'react'
-import type { VerdictCard } from '@fountem/verdict'
+export const metadata: Metadata = {
+  title: 'Unfaked — Detect AI-Generated Political Videos',
+  description: '1 in 3 UK voters saw political deepfakes before the 2026 elections. Paste a video URL to get an evidence-backed verdict in seconds.',
+}
 
 export default function HomePage() {
-  const [url, setUrl] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<VerdictCard | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!url.trim()) return
-
-    setLoading(true)
-    setError(null)
-    setResult(null)
-
-    try {
-      const response = await fetch('/api/detect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_url: url }),
-      })
-
-      if (!response.ok) {
-        const err = await response.json() as { error?: string }
-        throw new Error(err.error ?? 'Detection failed')
-      }
-
-      const data = await response.json() as VerdictCard
-      setResult(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
-    } finally {
-      setLoading(false)
-    }
-  }
-
   return (
-    <div className="max-w-2xl mx-auto px-6 pt-20 pb-32">
+    <div className="max-w-3xl mx-auto px-4 pt-16 pb-32">
+      {/* Hero */}
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold tracking-tight mb-4">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-red-900 bg-red-950/50 text-red-400 text-xs uppercase tracking-widest mb-6">
+          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+          UK Political Deepfake Detection
+        </div>
+        <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4 text-white">
           Is this video real?
         </h1>
-        <p className="text-zinc-400 text-lg">
-          Paste a video URL to detect AI-generated political content.
-          Results in under 15 seconds.
+        <p className="text-zinc-400 text-lg max-w-xl mx-auto leading-relaxed">
+          1 in 3 UK voters encountered AI-generated political content before the 2026 elections.
+          Paste any video URL for a forensic verdict in under 15 seconds.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="mb-8">
-        <div className="flex gap-3">
-          <input
-            type="url"
-            value={url}
-            onChange={e => setUrl(e.target.value)}
-            placeholder="https://twitter.com/... or https://youtube.com/..."
-            className="flex-1 bg-zinc-900 border border-zinc-700 rounded-lg px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 focus:ring-1 focus:ring-zinc-500"
-            disabled={loading}
-          />
-          <button
-            type="submit"
-            disabled={loading || !url.trim()}
-            className="bg-white text-black font-semibold px-6 py-3 rounded-lg hover:bg-zinc-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? 'Analysing...' : 'Check'}
-          </button>
+      {/* Detection Form */}
+      <DetectForm />
+
+      {/* Trust signals */}
+      <div className="mt-16 grid grid-cols-3 gap-6 text-center">
+        {[
+          { value: '3-layer', label: 'forensic analysis' },
+          { value: 'Primary', label: 'source evidence chain' },
+          { value: 'Public', label: 'deepfake archive' },
+        ].map(({ value, label }) => (
+          <div key={label}>
+            <div className="text-2xl font-bold text-white mb-1">{value}</div>
+            <div className="text-zinc-500 text-sm">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Recent cases preview */}
+      <div className="mt-16">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-zinc-300 font-semibold">Recent cases</h2>
+          <a href="/cases" className="text-red-400 hover:text-red-300 text-sm transition-colors">View archive →</a>
         </div>
-      </form>
-
-      {loading && (
-        <div className="text-center py-12">
-          <div className="inline-block w-8 h-8 border-2 border-zinc-600 border-t-white rounded-full animate-spin mb-4" />
-          <p className="text-zinc-400 text-sm">Running 3-layer forensic analysis…</p>
-        </div>
-      )}
-
-      {error && (
-        <div className="bg-red-950 border border-red-800 rounded-lg p-4 text-red-300 text-sm">
-          {error}
-        </div>
-      )}
-
-      {result && <VerdictCardDisplay card={result} />}
-
-      <div className="mt-16 pt-8 border-t border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-400 mb-4 uppercase tracking-wider">
-          Recent Cases
-        </h2>
         <RecentCases />
       </div>
     </div>
   )
 }
 
-function VerdictCardDisplay({ card }: { card: VerdictCard }) {
-  const colour = card.verdict_colour
+async function RecentCases() {
+  // Server component — fetch directly from Supabase in production
+  // Returns placeholder when DB not configured
+  try {
+    const { createServiceClient } = await import('@fountem/db')
+    const db = createServiceClient()
+    const { data } = await db
+      .from('video_detections')
+      .select('id, verdict, confidence_pct, probable_generator, case_title, created_at')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false })
+      .limit(3)
+
+    if (!data || data.length === 0) return <EmptyCases />
+    return (
+      <div className="space-y-3">
+        {data.map((c: any) => (
+          <CaseRow key={c.id} case={c} />
+        ))}
+      </div>
+    )
+  } catch {
+    return <EmptyCases />
+  }
+}
+
+function CaseRow({ case: c }: { case: any }) {
+  const colours: Record<string, string> = {
+    ai_generated: 'text-red-400',
+    likely_ai_generated: 'text-orange-400',
+    inconclusive: 'text-yellow-400',
+    likely_real: 'text-green-400',
+    real: 'text-green-400',
+  }
 
   return (
-    <div className="rounded-xl border border-zinc-700 overflow-hidden">
-      <div className="px-6 py-5" style={{ borderLeft: `4px solid ${colour}` }}>
-        <div className="flex items-center gap-3 mb-3">
-          <span
-            className="text-sm font-bold uppercase tracking-wider px-3 py-1 rounded-full"
-            style={{ backgroundColor: `${colour}20`, color: colour }}
-          >
-            {card.verdict_label}
-          </span>
-          <span className="text-zinc-500 text-sm">{card.confidence_pct}% confidence</span>
-          {card.probable_generator_label && (
-            <span className="text-zinc-500 text-sm">· {card.probable_generator_label}</span>
-          )}
-        </div>
-
-        <p className="text-white font-medium mb-4">{card.summary}</p>
-
-        {card.what_would_change_this && (
-          <div className="bg-zinc-900 rounded-lg p-4 mb-4">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">What would change this verdict</p>
-            <p className="text-zinc-300 text-sm">{card.what_would_change_this}</p>
-          </div>
-        )}
-
-        <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
-          <span className="text-xs text-zinc-600">{card.attribution}</span>
-          <div className="flex gap-3">
-            <a
-              href={card.correction_pack_url}
-              className="text-xs text-zinc-400 hover:text-white transition-colors"
-            >
-              Share →
-            </a>
-            <a
-              href={card.methodology_url}
-              className="text-xs text-zinc-400 hover:text-white transition-colors"
-            >
-              Methodology →
-            </a>
-          </div>
-        </div>
-      </div>
+    <div className="flex items-center gap-3 p-3 rounded-lg bg-zinc-900 border border-zinc-800">
+      <span className={`text-xs font-bold uppercase tracking-wider shrink-0 ${colours[c.verdict] ?? 'text-zinc-400'}`}>
+        {c.verdict?.replace(/_/g, ' ')}
+      </span>
+      <span className="text-zinc-300 text-sm truncate">{c.case_title ?? 'Unnamed'}</span>
+      <span className="text-zinc-600 text-xs ml-auto shrink-0">{c.confidence_pct}%</span>
     </div>
   )
 }
 
-function RecentCases() {
+function EmptyCases() {
   return (
-    <a href="/cases" className="text-sm text-zinc-400 hover:text-white transition-colors">
-      View the public archive →
-    </a>
+    <p className="text-zinc-600 text-sm text-center py-8 border border-dashed border-zinc-800 rounded-lg">
+      No cases yet — be the first to submit a video above.
+    </p>
   )
 }
