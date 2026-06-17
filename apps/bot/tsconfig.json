@@ -26,6 +26,9 @@
       ],
       "@fountem/verdict": [
         "../../packages/verdict/src/index.ts"
+      ],
+      "@fountem/social": [
+        "../../packages/social/src/index.ts"
       ]
     },
     "isolatedModules": true

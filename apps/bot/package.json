@@ -16,6 +16,7 @@
     "@fountem/db": "*",
     "@fountem/detection": "*",
     "@fountem/rag": "*",
+    "@fountem/social": "*",
     "@fountem/verdict": "*"
   },
   "devDependencies": {

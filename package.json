@@ -47,7 +47,8 @@
       "^@fountem/rag$": "<rootDir>/packages/rag/src/index.ts",
       "^@fountem/detection$": "<rootDir>/packages/detection/src/index.ts",
       "^@fountem/core$": "<rootDir>/packages/core/src/index.ts",
-      "^@fountem/ui$": "<rootDir>/packages/ui/src/index.ts"
+      "^@fountem/ui$": "<rootDir>/packages/ui/src/index.ts",
+      "^@fountem/social$": "<rootDir>/packages/social/src/index.ts"
     },
     "transform": {
       "^.+\\.tsx?$": [
