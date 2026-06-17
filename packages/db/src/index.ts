@@ -8,7 +8,6 @@ export * from './types'
 function getWebSocketImpl() {
   if (typeof WebSocket !== 'undefined') return undefined // native (Node 22+, browsers)
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return require('ws')
   } catch {
     return undefined

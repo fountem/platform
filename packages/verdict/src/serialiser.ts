@@ -1,5 +1,9 @@
-import type { VideoDetection, CorrectionPack, Verdict } from '@fountem/db'
+import type { VideoDetection, CorrectionPack, Verdict, SignalBreakdown, SourceCitation } from '@fountem/db'
 import { VERDICT_META, GENERATOR_LABELS, confidenceLabel } from './schema'
+
+/** Shown on every verdict — accuracy + legal shield. Detectors are not definitive. */
+export const VERDICT_DISCLAIMER =
+  'This is an evidence-based assessment, not definitive proof. Automated detection can be wrong, especially on compressed or low-resolution media. Use this as one input alongside other context and human judgement.'
 
 export interface VerdictCard {
   id: string
@@ -8,16 +12,22 @@ export interface VerdictCard {
   verdict_label: string
   verdict_colour: string
   confidence_pct: number
+  confidence_low: number | null
+  confidence_high: number | null
   confidence_label: string
   summary: string
   reasoning: string
   what_would_change_this: string | null
+  disclaimer: string
   probable_generator: string | null
   probable_generator_label: string | null
   evasion_detected: string | null
   evasion_description: string | null
+  vendor_disagreement: boolean | null
+  signal_breakdown: SignalBreakdown | null
+  review_status: string | null
   layer_breakdown: LayerBreakdown | null
-  source_citations: any[]
+  source_citations: SourceCitation[]
   correction_pack_url: string | null
   correction_pack_slug: string | null
   share_text: string
@@ -26,8 +36,8 @@ export interface VerdictCard {
 
 export interface LayerBreakdown {
   layer1: { label: string; score: number | null; signals: string[] }
-  layer2: { label: string; provenance: boolean; synthid: boolean | null; metadata_stripped: boolean }
-  layer3: { label: string; red_flags: string[]; behavioural_score: number | null }
+  layer2: { label: string; provenance: boolean; synthid: boolean | null; metadata_stripped: boolean; signature_issuer: string | null }
+  layer3: { label: string; red_flags: string[]; behavioural_score: number | null; av_sync_score: number | null; lip_sync_anomaly: boolean }
 }
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://unfaked.ai'
@@ -59,11 +69,14 @@ export function serialiseDetectionVerdict(
       provenance: l2?.c2pa_manifest_present ?? false,
       synthid: l2?.synthid_detected ?? null,
       metadata_stripped: l2?.metadata_stripped ?? false,
+      signature_issuer: l2?.c2pa_signature_issuer ?? null,
     },
     layer3: {
       label: 'Contextual Intelligence',
       red_flags: l3?.contextual_red_flags ?? [],
       behavioural_score: l3?.behavioural_plausibility_score ?? null,
+      av_sync_score: l3?.audio_visual_sync_score ?? null,
+      lip_sync_anomaly: l3?.lip_sync_anomaly ?? false,
     },
   } : null
 
@@ -81,14 +94,20 @@ export function serialiseDetectionVerdict(
     verdict_label: meta.label,
     verdict_colour: meta.colour,
     confidence_pct: detection.confidence_pct,
+    confidence_low: detection.confidence_low,
+    confidence_high: detection.confidence_high,
     confidence_label: confidenceLabel(detection.confidence_pct),
     summary: detection.reasoning ?? '',
     reasoning: detection.reasoning ?? '',
     what_would_change_this: detection.what_would_change_this,
+    disclaimer: VERDICT_DISCLAIMER,
     probable_generator: detection.probable_generator,
     probable_generator_label: genLabel,
     evasion_detected: detection.evasion_detected,
     evasion_description: detection.evasion_description,
+    vendor_disagreement: detection.vendor_disagreement,
+    signal_breakdown: detection.signal_breakdown,
+    review_status: detection.review_status,
     layer_breakdown: layerBreakdown,
     source_citations: [],
     correction_pack_url: pack ? `${BASE_URL}/check/${pack.slug}` : null,
@@ -120,14 +139,20 @@ export function serialiseClaimVerdict(
     verdict_label: meta.label,
     verdict_colour: meta.colour,
     confidence_pct: verdict.confidence_pct,
+    confidence_low: null,
+    confidence_high: null,
     confidence_label: confidenceLabel(verdict.confidence_pct),
     summary: verdict.summary,
     reasoning: verdict.reasoning,
     what_would_change_this: verdict.what_would_change_this,
+    disclaimer: VERDICT_DISCLAIMER,
     probable_generator: null,
     probable_generator_label: null,
     evasion_detected: null,
     evasion_description: null,
+    vendor_disagreement: null,
+    signal_breakdown: null,
+    review_status: verdict.reviewed_by ? 'human_reviewed' : 'automated',
     layer_breakdown: null,
     source_citations: verdict.source_citations ?? [],
     correction_pack_url: pack ? `${FOUNTEM_URL}/pack/${pack.slug}` : null,

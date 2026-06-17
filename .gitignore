@@ -8,6 +8,8 @@ node_modules/
 dist/
 build/
 out/
+next-env.d.ts
+*.tsbuildinfo
 
 # Turbo
 .turbo/
@@ -27,6 +29,17 @@ npm-debug.log*
 
 # Testing
 coverage/
+eval-results/
+
+# Infra
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+.terraform.lock.hcl
+
+# Netlify
+.netlify/
 
 # Vercel
 .vercel

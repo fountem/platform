@@ -2,16 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
-
-body {
-  background: #0a0a0a;
-  color: #fafafa;
-  font-family: 'Inter', -apple-system, sans-serif;
-  -webkit-font-smoothing: antialiased;
+:root {
+  color-scheme: light;
 }
 
-::selection { background: #ef444440; }
+body {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
 
-.verdict-card { transition: border-color 0.15s ease; }
-.verdict-card:hover { border-color: #3f3f46; }
+::selection {
+  background: #24523322;
+}
+
+/* Lora reads more authoritatively at 400 than 700 — never bold the serif. */
+.font-serif {
+  font-weight: 400;
+}

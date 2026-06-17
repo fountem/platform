@@ -50,10 +50,12 @@ export const PARTIES: PartyData[] = [
   },
 ]
 
+// Issue slugs mirror the evidence corpus topic tags so retrieval can filter by issue.
 export const ISSUES = [
   { slug: 'housing', label: 'Housing' },
-  { slug: 'nhs', label: 'NHS & Health' },
-  { slug: 'economy', label: 'Economy' },
+  { slug: 'social_care', label: 'NHS & Social Care' },
+  { slug: 'local_economy', label: 'Local Economy' },
   { slug: 'immigration', label: 'Immigration' },
-  { slug: 'climate', label: 'Climate' },
+  { slug: 'transport', label: 'Transport' },
+  { slug: 'local_tax', label: 'Council Tax' },
 ]

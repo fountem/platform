@@ -1,5 +1,5 @@
 # Fountem / Unfaked — Agent Context Package
-**Last updated:** June 16, 2026 · **Author:** Elroy (elroy@flatfile.io)
+**Last updated:** June 17, 2026 · **Author:** Elroy (elroy@flatfile.io)
 
 ## Read This First
 
@@ -15,50 +15,98 @@ Fountem is a UK political intelligence platform (`fountem.ai`). Unfaked is its c
 | Component | Status | Location |
 |---|---|---|
 | GitHub monorepo | ✅ Live | github.com/fountem/platform |
-| Supabase database | ✅ Live | pubjwxyslvcsmdiiaisd.supabase.co |
-| 11 Supabase tables | ✅ Created | eu-west-2 (London), free tier |
-| 42/42 tests passing | ✅ | packages/* |
-| Vercel configs | ✅ Written | apps/*/vercel.json |
+| Supabase database | ✅ Live | project ref in secret store (not committed) |
+| 14 Supabase tables + 11 migrations | ✅ Created | eu-west-2 (London) |
+| Full RLS on all tables | ✅ | `supabase/migrations/007,010,011` |
+| 103/103 tests passing | ✅ | `npx jest` (19 suites) |
+| Type-check 10/10 workspaces | ✅ | `npm run type-check` |
+| All 3 web apps build clean | ✅ | `turbo run build` |
+| ESLint flat config, 0 warnings | ✅ | `eslint.config.mjs` |
+| CI: secret-scan + test + tsc + lint | ✅ | `.github/workflows/ci.yml` |
+| Netlify configs (per app) | ✅ Written | `apps/*/netlify.toml` |
+| AWS resolver service + Terraform | ✅ Written | `services/resolver/` |
+| Shared `@fountem/core` (rate-limit, api-key, ssrf, monitoring, quota/Turnstile) | ✅ | `packages/core/` |
+| **Design system `@fountem/ui`** (tokens preset + components) | ✅ | `packages/ui/` |
+| **Supabase Auth** (magic link + Google) on both apps | ✅ | `apps/*/src/lib/supabase`, `middleware.ts` |
+| **Per-account quotas + global budget circuit-breaker** | ✅ | `011_auth_quotas.sql`, gated `/api/detect`,`/api/verify` |
+| Human-review queue (API + admin UI) | ✅ | `apps/unfaked/.../admin/review` |
+| Privacy/GDPR + methodology pages | ✅ | both apps |
 | All 30+ research docs | ✅ This folder | /context subdirs |
 
-### What still needs doing
-1. **Deploy to Vercel** — Three separate projects (unfaked, fountem, marketing). Blocked on GitHub org/SSO issue (Flatfile SSO gates GitHub account). Consider Netlify as alternative.
-2. **Wire live API keys** — `ANTHROPIC_API_KEY`, `HIVE_API_KEY` not yet set in production.
-3. **Seed evidence database** — Run `scripts/seed-evidence.ts` after API keys are in Vercel.
-4. **Run eval harness** — `scripts/eval-harness.ts` validates RAG pipeline against 10 test claims.
-5. **X bot** — Deferred. Requires X API Basic (£160/month). Do after first B2B revenue.
+### What still needs doing (deploy-time)
+1. **Provision AWS resolver** — `cd services/resolver/infra && terraform apply` (needs `vpc_id`, subnets, `resolver_api_key`). Then build/push the Docker image. See `services/resolver/README.md`. Outputs give `RESOLVER_URL` + `VALKEY_URL`.
+2. **Create Netlify sites** — one per app (unfaked, fountem, marketing, bot), base directory = the app folder. `netlify.toml` is already committed in each.
+3. **Wire live API keys + secrets** — set every var in `.env.example` in each Netlify site (and `RESOLVER_API_KEY`/`PORT` on the resolver). Generate `ADMIN_TOKEN`, `RESOLVER_API_KEY`, `CRON_SECRET` with `openssl rand -hex 32`.
+4. **Rotate the Supabase keys** that were committed on 2026-06-16 (treat as compromised).
+5. **Seed data** — `scripts/seed-reference.ts` (parties/issues) then `scripts/seed-evidence.ts` (corpus).
+6. **Run eval harness** — `scripts/eval-harness.ts` validates RAG against 10 test claims (target ≥8/10).
+7. **Apply migration 011 + enable auth providers** — run `011_auth_quotas.sql`, then in the Supabase dashboard enable Email (magic link) + Google providers and add `<app-url>/auth/callback` as a redirect URL for unfaked + fountem. Optionally create a Cloudflare Turnstile widget and set `TURNSTILE_SECRET_KEY` / `NEXT_PUBLIC_TURNSTILE_SITE_KEY` (left unset = captcha skipped).
+
+---
+
+## Design system & auth (June 17, 2026 redesign)
+
+**Design system — `@fountem/ui`.** One palette, two surfaces:
+- **Editorial (light):** warm parchment `#faf8f3` + forest green (`forest-800 #245233` CTA, `forest-900` chrome) + **Lora** serif headlines + **Inter** body. Used for marketing, home, archive, methodology, privacy, party dossiers, claim results.
+- **Forensic (dark):** near-black `forest-950` + emerald/amber data accents + **JetBrains Mono** labels. Used for the Unfaked video result view (`VerdictPanel`): radial `ConfidenceGauge`, per-signal `SignalBar`s, layer cards.
+- Rule: **red is only the "false / AI-generated" verdict**, never brand chrome.
+- Tokens live in `packages/ui/tailwind-preset.ts` (imported by each app's `tailwind.config.ts` via `presets:[...]`; each app's `content` also scans `../../packages/ui/src`). Fonts wired with `next/font` CSS variables (`--font-lora/-inter/-mono`) in each `app/layout.tsx`.
+- Components: `Button`/`ButtonLink`, `Input`, `Card`, `StatusChip`, `ConfidenceGauge`, `SignalBar`, `Container`, `Eyebrow`, `Stat`, `ShieldMark` + `verdictTone`/`toneChipClasses` helpers (light+dark).
+
+**App structure.** Each Next app now has a `(site)` route group holding the shared nav+footer chrome; `/login` and `/auth/*` live outside it (full-bleed). Root `app/layout.tsx` only sets `<html>`, fonts, and parchment `<body>`.
+
+**Auth — Supabase Auth (`@supabase/ssr`).** Per app: `src/lib/supabase/{server,client}.ts`, `middleware.ts` (session refresh), `app/auth/callback` (code exchange), `app/auth/signout`, and an editorial `app/login` page (magic link + Google + optional Turnstile). `getUser()` returns null when env is absent so pages still render locally.
+
+**Anti-abuse (credit protection), three layers** — public browsing stays open; running a check requires a signed-in user OR a B2B API key:
+1. **Per-account daily quota** — `increment_user_usage` RPC, limits in `DEFAULT_DAILY_LIMITS` (`UNFAKED_FREE_DAILY_LIMIT=5`, `FOUNTEM_FREE_DAILY_LIMIT=10`).
+2. **Per-IP rate limit** — existing `@fountem/core` ratelimit as a safety net.
+3. **Global daily budget circuit-breaker** — `increment_global_budget` RPC, hard ceiling (`*_GLOBAL_DAILY_CAP`). Quota/budget are consumed only on real (uncached) runs.
+Migration `011_auth_quotas.sql` adds `profiles` (+ signup trigger), `user_usage`, `service_budget`, the RPCs, and RLS.
 
 ---
 
 ## Products
 
 ### Unfaked (`unfaked.ai`)
-Free public deepfake detection for political video/images. Paste a URL, get a verdict in <15 seconds.
+Free public deepfake detection for political video/images. Paste a URL, get a verdict in <60 seconds.
 
-**Detection pipeline (3 layers):**
-1. **Forensic** — Hive Moderation API + FFprobe metadata extraction → AI score, generator fingerprint
-2. **Provenance** — C2PA manifest check via c2pa-node + SynthID (Veo-specific, deferred)
-3. **Contextual** — GPT-4o contextual reasoning over channel patterns, audio, physics
+**Architecture:** The web app (`apps/unfaked`) never touches native binaries. A separate
+network-isolated **AWS resolver service** (`services/resolver/`) does yt-dlp download,
+ffprobe, C2PA extraction and SSRF-safe fetching, returning a normalised `ResolvedMedia`
+object (contract: `packages/detection/src/resolver.ts`). The detection package
+(`@fountem/detection`) consumes that object — no `c2pa-node`/`yt-dlp` in the serverless tier.
 
-Weighted synthesis → verdict: `ai_generated | likely_ai_generated | inconclusive | likely_real | real`
+**Detection pipeline (provenance-first ensemble):**
+1. **Provenance first** — valid C2PA manifest from a trusted issuer → decisive; AI watermark (SynthID) → decisive the other way. Short-circuits the rest.
+2. **Forensic ensemble (when provenance absent)** — Hive + Sensity (two vendors), with **vendor-disagreement** surfaced, not hidden.
+3. **Contextual** — GPT-4o-mini over real platform metadata (channel age, upload history).
+4. **Temporal / cross-modal** — keyframe-interval regularity + audio↔lip-sync correlation.
 
-Every verdict includes:
-- Confidence percentage
-- Probable generator (Veo / Kling / Runway / Sora / Luma / Pika / unknown)
-- `what_would_change_this` — the falsifiability statement (key differentiator)
-- Evasion detection (re-encoding, grain overlay, speed manipulation)
-- Public case record logged to `video_detections` table
+Synthesis (`packages/detection/src/synthesiser.ts`) does **presence-aware** weighting
+(missing signals renormalise, never silently drag the score), **degradation-aware**
+down-weighting of forensics on low-res/compressed media, 0.05-step binning, and emits a
+**calibrated confidence band** (`confidence_low`/`confidence_high`) — not a single number.
 
-**X bot (@unfaked):** Polls X for `@unfaked` mentions every 5 minutes via Vercel Cron. Reply with verdict card. Currently deferred — code exists in `apps/bot/`.
+Verdict: `ai_generated | likely_ai_generated | inconclusive | likely_real | real`. Every
+verdict includes the band, probable generator, `what_would_change_this` falsifiability
+statement, an explicit not-definitive disclaimer, a per-signal breakdown, and a public case
+record in `video_detections`. Uncertain/high-stakes cases auto-escalate to a
+**human-review queue** (`shouldEscalateForReview`) surfaced at `/admin/review`
+(token-protected via `ADMIN_TOKEN`; API at `/api/admin/review`).
+
+**X bot (@unfaked):** `apps/bot` polls X mentions every 5 minutes via a **Netlify Scheduled
+Function** (`apps/bot/netlify/functions/poll.mts`) that calls `/api/cron`. Calls `/api/detect`
+with `UNFAKED_API_KEY` so it uses the B2B quota, not the per-IP limit.
 
 ### Fountem (`fountem.ai`)
 Political intelligence platform. Enter a claim, get an evidence-backed verdict with traceable source chain.
 
 **RAG pipeline:**
+- **Atomic claim decomposition** (`packages/rag/src/decompose.ts`) — split bundled claims into independently checkable sub-claims, verify each, aggregate (`aggregateSubVerdicts`).
 - Hybrid BM25 + pgvector retrieval (OpenAI `text-embedding-3-small`)
-- Claude Sonnet Citations API for verdict generation
+- Claude Sonnet for grounded, sourced verdicts; returns **unverifiable** when no adequate evidence (no guessing)
 - Source hierarchy: ONS > IFS > Hansard > NAO > Resolution Foundation > Full Fact (corroboration only)
-- Agent layer (LangGraph) for multi-part claim decomposition — Phase 2
+- Pure eval scoring (`packages/rag/src/eval.ts`: `classifyResult`, `computeScore`) drives `scripts/eval-harness.ts`
 
 **Five issues × five parties:**
 - Issues: housing, social care, local economy, transport, local tax
@@ -78,27 +126,41 @@ Political intelligence platform. Enter a claim, get an evidence-backed verdict w
 - **Org:** fountem
 - **Repo:** github.com/fountem/platform
 - **Branch:** main
-- **Structure:** Turborepo monorepo
-  - `apps/unfaked` — Next.js 15 deepfake detection app
-  - `apps/fountem` — Next.js 15 political intelligence platform
+- **Structure:** Turborepo monorepo (workspaces: `apps/*`, `packages/*`; `services/*` is deployed separately)
+  - `apps/unfaked` — Next.js 15 deepfake detection app (+ `/admin/review`, `/methodology`, `/privacy`, `/cases`)
+  - `apps/fountem` — Next.js 15 political intelligence platform (+ `/methodology`, `/privacy`, `/pack/[slug]`)
   - `apps/marketing` — Landing page
-  - `apps/bot` — X bot (Vercel Cron)
-  - `packages/db` — Supabase client + types
-  - `packages/rag` — RAG pipeline (chunker, retriever, Claude verdict engine)
-  - `packages/detection` — 3-layer video detection
-  - `packages/verdict` — Shared verdict card schema
+  - `apps/bot` — X bot (Netlify Scheduled Function → `/api/cron`)
+  - `packages/db` — Supabase client + types (typed `Database`, RPCs)
+  - `packages/rag` — RAG pipeline (chunker, retriever, decompose, verdict engine, eval)
+  - `packages/detection` — provenance-first ensemble + resolver client + temporal + synthesiser
+  - `packages/verdict` — Shared verdict card schema + serialisers (with disclaimer/confidence band)
+  - `packages/core` — shared utils: `ratelimit` (Valkey/in-memory), `apikey`, `url-guard` (SSRF), `monitoring`
   - `packages/ui` — Design system (Tailwind + brand tokens)
+  - `services/resolver` — **standalone** AWS service (Express + yt-dlp/ffprobe/c2patool); own `package.json`, `Dockerfile`, Terraform in `infra/`. NOT an npm workspace — install/build it from inside its own dir.
 
 ### Supabase
-- **Project URL:** https://pubjwxyslvcsmdiiaisd.supabase.co
+- **Project URL:** in secret store as `NEXT_PUBLIC_SUPABASE_URL` (never commit)
 - **Region:** eu-west-2 (London)
-- **Publishable key:** `sb_publishable_Uhthqa2expJHSIcWleh4gA_OMW1bAnP`
-- **Service role key:** In Elroy's 1Password / env vars (never commit)
+- **Publishable / anon key:** in secret store as `NEXT_PUBLIC_SUPABASE_ANON_KEY` (never commit)
+- **Service role key:** in secret store as `SUPABASE_SERVICE_ROLE_KEY` (never commit)
+
+> ⚠️ The original keys committed to this repo on 2026-06-16 must be treated as compromised
+> and **rotated** in the Supabase dashboard. See `context/IMPLEMENTATION_PLAN.md` Phase 0.
 
 **11 tables live:**
 `evidence_sources`, `evidence_chunks`, `claims`, `verdicts`, `video_detections`, `parties`, `issues`, `party_issue_positions`, `track_record_scores`, `correction_packs`, `api_keys`
 
 **Extensions:** `vector` (pgvector), `pg_trgm`, `uuid-ossp`
+
+**Migrations (`supabase/migrations/`, apply in order — see `applied.md`):**
+`001_extensions` → `002_evidence` → `003_claims_verdicts` → `004_video_detections` →
+`005_parties_issues` → `006_correction_packs_api` → `007_rls` →
+`008_detection_enhancements` (confidence band, vendor_disagreement, signal_breakdown, review_status/reviewed_by/at/notes) →
+`009_api_key_usage` (atomic `increment_api_key_usage` RPC for monthly quota) →
+`010_rls_complete` (RLS on reference tables; public read, service-role write).
+
+> ⚠️ Any new migration created locally must be applied to the live DB and logged in `applied.md`.
 
 ### Seed data (in Supabase)
 - 5 parties: Labour, Conservative, Liberal Democrats, Green, Reform UK
@@ -153,8 +215,12 @@ Political intelligence platform. Enter a claim, get an evidence-backed verdict w
 2. **Claude Sonnet as primary LLM** — Better hallucination rate, Citations API, prompt caching economics.
 3. **Turborepo monorepo** — All apps share packages. Single CI pipeline.
 4. **RAG before fine-tuning** — Fine-tuning needs 10k+ labelled examples and £5k-50k+ GPU compute. Phase 1 RAG is correct.
-5. **SynthID deferred** — Still Vertex AI preview. Hive + Sensity sufficient for launch.
-6. **X bot at Basic API** — £160/month polling every 60s. Start there. Upgrade to Pro ($5k/month) when funded.
+5. **Netlify, not Vercel** — Flatfile SSO gated the GitHub org. Each app is a Netlify site (base dir = app folder); `netlify.toml` committed per app. Bot cron = Netlify Scheduled Function.
+6. **AWS for the resolver** — heavy/native/untrusted media work (yt-dlp, ffprobe, c2patool) runs in ECS Fargate behind an internal ALB in private subnets, never in serverless. Terraform in `services/resolver/infra/`.
+7. **Valkey (ElastiCache) for rate limiting** — provisioned by the resolver Terraform; `@fountem/core` rate-limiter uses it via `VALKEY_URL`, falling back to in-memory.
+8. **Sensity + Hive both at launch** — two-vendor ensemble; we surface vendor disagreement rather than hiding it.
+9. **Launch Unfaked + Fountem together.**
+10. **No 100%-accuracy claims** — calibrated confidence bands + human-in-the-loop; methodology pages describe only what is actually implemented.
 
 ---
 
@@ -216,45 +282,79 @@ context/
 
 ## Environment Variables Required
 
+The canonical, commented list is in `.env.example` at the repo root. Summary:
+
 ```bash
-# Supabase
-NEXT_PUBLIC_SUPABASE_URL=https://pubjwxyslvcsmdiiaisd.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_Uhthqa2expJHSIcWleh4gA_OMW1bAnP
-SUPABASE_SERVICE_ROLE_KEY=<in 1Password>
-
+# Supabase (from secret store — never commit real values)
+NEXT_PUBLIC_SUPABASE_URL=  NEXT_PUBLIC_SUPABASE_ANON_KEY=  SUPABASE_SERVICE_ROLE_KEY=
 # LLM
-ANTHROPIC_API_KEY=<get from console.anthropic.com>
-OPENAI_API_KEY=<get from platform.openai.com>
-
-# Detection
-HIVE_API_KEY=<get from thehive.ai>
-SENSITY_API_KEY=<optional at launch>
-
-# X Bot (defer)
-X_API_KEY=
-X_API_SECRET=
-X_ACCESS_TOKEN=
-X_ACCESS_TOKEN_SECRET=
-X_BEARER_TOKEN=
-
+ANTHROPIC_API_KEY=  OPENAI_API_KEY=
+# Detection vendors (both at launch)
+HIVE_API_KEY=  SENSITY_API_KEY=
+# AWS resolver (from `terraform output`)
+RESOLVER_URL=  RESOLVER_API_KEY=
+# Rate limiting (falls back to in-memory if unset)
+VALKEY_URL=
+# Admin human-review queue
+ADMIN_TOKEN=
+# Observability (optional; logs to stdout if unset)
+SENTRY_DSN=
+# X bot
+X_API_KEY= X_API_SECRET= X_ACCESS_TOKEN= X_ACCESS_TOKEN_SECRET= X_BEARER_TOKEN=
+X_BOT_USER_ID=  UNFAKED_API_URL=  UNFAKED_API_KEY=  BOT_SELF_URL=  CRON_SECRET=
 # App
-NEXT_PUBLIC_APP_URL=https://unfaked.ai   # or fountem.ai per app
-CRON_SECRET=<random string>
+NEXT_PUBLIC_APP_URL=   # set per app (unfaked.ai / fountem.ai)
 ```
+
+The resolver service has its own `services/resolver/.env.example` (`PORT`, `RESOLVER_API_KEY`).
 
 ---
 
 ## What To Do Next (Priority Order)
 
-1. **Resolve Vercel deployment** — Netlify is the easiest path given Flatfile SSO blocking GitHub org access. All apps are Next.js 15, Netlify supports this natively. Root directories: `apps/unfaked`, `apps/fountem`, `apps/marketing`.
-2. **Get API keys** — Anthropic key (claude.ai → API), Hive key (thehive.ai → API), OpenAI key (already may exist).
-3. **Set env vars in hosting platform** — Reference `.env.example` in repo root.
-4. **Run `scripts/seed-evidence.ts`** — Seeds ONS/IFS/Hansard/Full Fact passages into `evidence_chunks`.
-5. **Run `scripts/eval-harness.ts`** — Validate RAG pipeline. Target ≥8/10 correct verdicts.
-6. **End-to-end test** — Wakefield deepfake case is the canonical test. URL is in `/cases` archive.
-7. **Outreach** — Full Fact, Demos, Electoral Commission, Alan Turing Institute. Use product-spec.md for pitch framing.
+All application code, tests (91/91), type-checks (10/10) and lint are green locally. Remaining
+work is provisioning/deploy, not coding:
+
+1. **Provision the resolver on AWS** — `cd services/resolver/infra && terraform init && terraform apply` with your `vpc_id`, `private_subnet_ids`, `alb_subnet_ids`, `resolver_api_key`. Then build & push the Docker image (steps in `services/resolver/README.md`). Capture `resolver_url` and `valkey_url` outputs.
+2. **Create the 4 Netlify sites** — base dir per app; set all env vars from `.env.example` (including `RESOLVER_URL`, `VALKEY_URL`, `ADMIN_TOKEN`). The bot needs `BOT_SELF_URL` + `CRON_SECRET` for the scheduled function.
+3. **Rotate the leaked Supabase keys** and set the fresh ones.
+4. **Get/Set API keys** — Anthropic, OpenAI, Hive, Sensity.
+5. **Seed** — `scripts/seed-reference.ts` then `scripts/seed-evidence.ts`.
+6. **Run `scripts/eval-harness.ts`** — target ≥8/10 correct verdicts.
+7. **End-to-end test** — Wakefield deepfake case (`/cases`).
+8. **Outreach** — Full Fact, Demos, Electoral Commission, Alan Turing Institute.
+
+## Build / verify commands
+
+```bash
+npm install                 # root workspaces
+npm run type-check          # turbo tsc across 10 workspaces
+npx jest                    # 91 tests, 18 suites
+npx eslint .                # 0 warnings
+# resolver (separate, from its own dir):
+cd services/resolver && npm install && npx tsc -p tsconfig.json --noEmit && node --import tsx --test 'src/*.test.ts'
+```
+
+---
+
+---
+
+## Session changelog — June 17, 2026 (production-hardening pass)
+
+Everything below was implemented, type-checked, tested and linted this session:
+
+- **Security (Phase 0/2):** scrubbed committed secrets from repo/docs; Gitleaks in CI; expanded `.gitignore`. SSRF guard (`@fountem/core/url-guard` client-side + `services/resolver/src/ssrf.ts` server-side, blocks private/reserved/metadata IPs). API-key auth with atomic monthly quota (`009_api_key_usage`). Full RLS (`007` + `010`).
+- **Foundation (Phase 1/1b):** per-package + per-app `tsconfig.json`; real CI (secret-scan, jest, tsc, eslint); strict typing; typed Supabase `Database` (interfaces→type aliases, added `Views`/`CompositeTypes`/`Relationships`, RPC sigs). Flat-config ESLint (`eslint.config.mjs`), 0 warnings. Dependency-free `captureException` monitoring (optional Sentry).
+- **Detection (Phase 3):** resolver client contract; provenance-first synthesiser with presence-aware + degradation-aware weighting, vendor disagreement, 0.05 binning, calibrated confidence bands; temporal + cross-modal signals; `shouldEscalateForReview`. New migration `008`.
+- **Resolver service (Phase 3b):** `services/resolver/` — Express app (`/health`, `/resolve`), yt-dlp/ffprobe/c2patool orchestration, hardened exec (arg arrays, timeouts, output caps, non-root), Dockerfile, full Terraform (ECR, ECS Fargate, internal ALB, SGs, Secrets Manager, **ElastiCache Valkey**), README, tests.
+- **RAG (Phase 4):** atomic claim decomposition + aggregation; pure eval scoring; rewritten `seed-evidence.ts`, `seed-reference.ts`, `eval-harness.ts`; fixed party pages + issue slug alignment.
+- **Differentiators UI (Phase 5):** human-review queue API + `/admin/review` page; calibrated bands + provenance + disclaimers in Unfaked detect/correction-pack UI and Fountem claim/pack UI; rewritten Unfaked **and** Fountem methodology pages (truth-in-advertising).
+- **Legal (Phase 6):** `/privacy` GDPR pages for both apps; not-definitive disclaimers throughout.
+- **Deploy (Phase 7):** switched Vercel→Netlify (`apps/*/netlify.toml`, removed `vercel.json`); bot cron as Netlify Scheduled Function (`apps/bot/netlify/functions/poll.mts`); expanded root `.env.example`; this context update.
+
+**Status:** code-complete and green. Outstanding items are infra provisioning + secrets + seeding (see "What To Do Next").
 
 ---
 
 *Founder: Elroy · elroy@flatfile.io · SRE at Flatfile*
-*This context package was generated June 16, 2026 from the Obvious project workspace (prj_KcdwPpDg)*
+*This context package was generated June 16, 2026 from the Obvious project workspace (prj_KcdwPpDg); updated June 17, 2026.*

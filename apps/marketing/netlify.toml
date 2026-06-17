@@ -1,0 +1,8 @@
+# Netlify site config for the marketing site.
+# Configure the site's "Base directory" = apps/marketing in the Netlify UI.
+[build]
+  command = "cd ../.. && npx turbo run build --filter=marketing"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

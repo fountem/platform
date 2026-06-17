@@ -1,0 +1,12 @@
+# Netlify site config for Unfaked.
+# Configure the site's "Base directory" = apps/unfaked in the Netlify UI.
+# Netlify detects the npm workspace and installs from the repo root.
+[build]
+  command = "cd ../.. && npx turbo run build --filter=unfaked"
+  publish = ".next"
+
+[build.environment]
+  NEXT_PUBLIC_APP_URL = "https://unfaked.ai"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

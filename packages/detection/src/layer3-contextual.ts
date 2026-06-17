@@ -1,90 +1,96 @@
 import OpenAI from 'openai'
 import type { Layer3Signals } from '@fountem/db'
+import type { PlatformMetadata, CrossModalResult } from './resolver'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+/**
+ * Layer 3 — Contextual.
+ *
+ * GPT-4o reasons over REAL platform metadata supplied by the resolver (channel age,
+ * upload date, view count, title) plus the cross-modal lip-sync signal — not over a
+ * bare URL string. Context the file cannot contain (recontextualised real media,
+ * suspicious channel patterns) is where pure detectors fail.
+ */
 
-interface VideoMetadata {
-  url: string
-  channelAgeDays?: number
-  channelVideoCount?: number
+let _openai: OpenAI | null = null
+function openai(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
 }
 
-async function extractUrlMetadata(videoUrl: string): Promise<VideoMetadata> {
-  const metadata: VideoMetadata = { url: videoUrl }
-
-  // For YouTube/TikTok/Twitter: in production, use platform APIs
-  // For now: heuristic signals from URL structure
-  try {
-    const url = new URL(videoUrl)
-    // Channel age signal: very new channels are suspicious
-    // These would come from platform API calls in production
-  } catch { /* invalid URL — continue */ }
-
-  return metadata
+export interface Layer3Input {
+  videoUrl: string
+  layer1Score: number
+  layer2Valid: boolean
+  platform: PlatformMetadata
+  crossModal: CrossModalResult
 }
 
-async function runGPTContextualAnalysis(
-  videoUrl: string,
-  layer1Score: number,
-  layer2Valid: boolean,
-  metadata: VideoMetadata
-): Promise<{ redFlags: string[]; behaviouralScore: number; audioCleanlinessScore: number }> {
-  const prompt = `You are analysing a video for contextual signs of AI generation or manipulation.
+interface ContextualResult {
+  redFlags: string[]
+  behaviouralScore: number
+}
+
+async function runGPTContextualAnalysis(input: Layer3Input): Promise<ContextualResult> {
+  const { videoUrl, layer1Score, layer2Valid, platform } = input
+  const prompt = `You are analysing a video for CONTEXTUAL signs of AI generation or manipulation. You are one layer of a multi-signal system; focus only on context, not pixel forensics.
 
 Video URL: ${videoUrl}
+Platform: ${platform.platform ?? 'unknown'}
+Channel/account age (days): ${platform.channel_age_days ?? 'unknown'}
+Channel video count: ${platform.channel_video_count ?? 'unknown'}
+Upload date: ${platform.upload_date ?? 'unknown'}
+View count: ${platform.view_count ?? 'unknown'}
+Title: ${platform.title ?? 'unknown'}
 Layer 1 (forensic) AI score: ${(layer1Score * 100).toFixed(0)}%
 Layer 2 (provenance) C2PA valid: ${layer2Valid}
-Channel age: ${metadata.channelAgeDays ?? 'unknown'} days
-Channel video count: ${metadata.channelVideoCount ?? 'unknown'}
 
-Based on these signals, identify contextual red flags. Look for:
-- Suspicious channel patterns (new channel, few videos, sudden political content)
-- URL structure anomalies
-- Temporal patterns (video posted during sensitive political period)
-- Platform hosting patterns
+Identify contextual red flags such as: brand-new account, very few prior uploads, sudden political content, mismatch between title and likely content, posting during a sensitive electoral period.
 
 Respond ONLY with JSON:
 {
-  "red_flags": ["<flag 1>", "<flag 2>"],
-  "behavioural_plausibility_score": <0.0-1.0>,
-  "audio_cleanliness_score": <0.0-1.0>,
-  "reasoning": "<brief explanation>"
+  "red_flags": ["<flag>", "..."],
+  "behavioural_plausibility_score": <0.0-1.0, higher = more plausibly organic/real>,
+  "reasoning": "<brief>"
 }`
 
-  const response = await openai.chat.completions.create({
+  const response = await openai().chat.completions.create({
     model: 'gpt-4o-mini',
     max_tokens: 512,
     messages: [{ role: 'user', content: prompt }],
     response_format: { type: 'json_object' },
   })
 
-  const parsed = JSON.parse(response.choices[0].message.content ?? '{}') as {
+  const parsed = JSON.parse(response.choices[0]?.message?.content ?? '{}') as {
     red_flags?: string[]
     behavioural_plausibility_score?: number
-    audio_cleanliness_score?: number
   }
-
   return {
     redFlags: parsed.red_flags ?? [],
-    behaviouralScore: parsed.behavioural_plausibility_score ?? 0.5,
-    audioCleanlinessScore: parsed.audio_cleanliness_score ?? 0.5,
+    behaviouralScore: clamp01(parsed.behavioural_plausibility_score ?? 0.5),
   }
 }
 
-export async function runLayer3(
-  videoUrl: string,
-  layer1Score: number,
-  layer2Valid: boolean
-): Promise<Layer3Signals> {
-  const metadata = await extractUrlMetadata(videoUrl)
-  const contextual = await runGPTContextualAnalysis(videoUrl, layer1Score, layer2Valid, metadata)
+function clamp01(n: number): number {
+  return Math.max(0, Math.min(1, n))
+}
+
+export async function runLayer3(input: Layer3Input): Promise<Layer3Signals> {
+  const { platform, crossModal } = input
+  const contextual = await runGPTContextualAnalysis(input)
+
+  const redFlags = [...contextual.redFlags]
+  if (crossModal.lip_sync_anomaly) {
+    redFlags.push('Audio and lip movements are out of sync (possible voice clone or dub)')
+  }
 
   return {
-    channel_age_days: metadata.channelAgeDays ?? null,
-    channel_video_count: metadata.channelVideoCount ?? null,
-    audio_cleanliness_score: contextual.audioCleanlinessScore,
-    clip_transition_intervals: null,  // Would come from FFprobe in production
+    channel_age_days: platform.channel_age_days,
+    channel_video_count: platform.channel_video_count,
+    audio_cleanliness_score: crossModal.audio_cleanliness_score,
+    clip_transition_intervals: null,
     behavioural_plausibility_score: contextual.behaviouralScore,
-    contextual_red_flags: contextual.redFlags,
+    contextual_red_flags: redFlags,
+    audio_visual_sync_score: crossModal.av_sync_score,
+    lip_sync_anomaly: crossModal.lip_sync_anomaly,
   }
 }

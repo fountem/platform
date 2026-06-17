@@ -1,9 +1,0 @@
-{
-  "framework": "nextjs",
-  "buildCommand": "cd ../.. && npx turbo run build --filter=marketing",
-  "outputDirectory": "apps/marketing/.next",
-  "installCommand": "npm install --legacy-peer-deps",
-  "env": {
-    "NEXT_PUBLIC_APP_URL": "https://fountem.ai"
-  }
-}

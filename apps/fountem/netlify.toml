@@ -1,0 +1,11 @@
+# Netlify site config for Fountem.
+# Configure the site's "Base directory" = apps/fountem in the Netlify UI.
+[build]
+  command = "cd ../.. && npx turbo run build --filter=fountem"
+  publish = ".next"
+
+[build.environment]
+  NEXT_PUBLIC_APP_URL = "https://fountem.ai"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

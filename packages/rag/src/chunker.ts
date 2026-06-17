@@ -4,7 +4,6 @@
  */
 
 const AVG_CHARS_PER_TOKEN = 4
-const TARGET_TOKENS = 200
 const MAX_TOKENS = 300
 const OVERLAP_SENTENCES = 1
 

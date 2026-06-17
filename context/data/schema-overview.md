@@ -1,6 +1,6 @@
 # Fountem — Data Schema Overview
 
-## Supabase Tables (production: pubjwxyslvcsmdiiaisd.supabase.co)
+## Supabase Tables (production project ref in secret store — not committed)
 
 All 11 tables were created via SQL Editor migration on June 16, 2026.
 

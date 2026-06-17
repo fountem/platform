@@ -1,0 +1,10 @@
+# Netlify site config for the X bot.
+# Configure the site's "Base directory" = apps/bot in the Netlify UI.
+# The bot poll runs via a Netlify Scheduled Function (netlify/functions/poll.mts)
+# which calls /api/cron every 5 minutes — Netlify has no Vercel-style crons.
+[build]
+  command = "cd ../.. && npx turbo run build --filter=bot"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

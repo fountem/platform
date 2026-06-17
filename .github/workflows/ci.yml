@@ -6,29 +6,47 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-
       - name: Install dependencies
         run: npm install --legacy-peer-deps
-
       - name: Run tests
-        run: npx jest --passWithNoTests
+        run: npx jest --ci
 
-      - name: Type check packages
-        run: |
-          cd packages/verdict && npx tsc --noEmit --skipLibCheck 2>/dev/null || true
-          cd ../rag && npx tsc --noEmit --skipLibCheck 2>/dev/null || true
-          cd ../detection && npx tsc --noEmit --skipLibCheck 2>/dev/null || true
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm install --legacy-peer-deps
+      - name: Type-check all workspaces
+        run: npm run type-check
 
   lint:
     runs-on: ubuntu-latest
@@ -39,5 +57,5 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm install --legacy-peer-deps
-      - name: Check formatting
-        run: echo "Lint pass — add ESLint config to enforce"
+      - name: ESLint
+        run: npm run lint

@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@fountem/db'
-import { hybridRetrieve } from '@fountem/rag'
-import { generateVerdict } from '@fountem/rag'
+import { hybridRetrieve, generateVerdict } from '@fountem/rag'
 import { serialiseClaimVerdict } from '@fountem/verdict'
-import { randomBytes, createHash } from 'crypto'
+import {
+  rateLimit,
+  clientIpFromHeaders,
+  enforceApiKey,
+  captureException,
+  DEFAULT_DAILY_LIMITS,
+  DEFAULT_GLOBAL_CAPS,
+} from '@fountem/core'
+import { randomBytes } from 'crypto'
+import { createSupabaseServerClient } from '../../../lib/supabase/server'
 
 export const maxDuration = 60
 
-async function getApiTierLimit(apiKey: string | null, db: any): Promise<{ tier: string; limit: number } | null> {
-  if (!apiKey) return { tier: 'public', limit: 10 }  // IP-based rate limit handled separately
-  const keyHash = createHash('sha256').update(apiKey).digest('hex')
-  const { data } = await db.from('api_keys').select('tier, monthly_limit, requests_this_month, is_active').eq('key_hash', keyHash).single()
-  if (!data || !data.is_active) return null
-  return { tier: data.tier, limit: data.monthly_limit }
-}
+// Per-IP safety net (in addition to per-account quotas) for signed-in users.
+const IP_HOURLY_LIMIT = Number(process.env.VERIFY_IP_HOURLY_LIMIT ?? 30)
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as { claim?: string }
+    const body = (await req.json().catch(() => ({}))) as { claim?: string }
     const claimText = body.claim?.trim()
     if (!claimText || claimText.length < 10) {
       return NextResponse.json({ error: 'claim must be at least 10 characters' }, { status: 400 })
@@ -27,34 +30,91 @@ export async function POST(req: NextRequest) {
     }
 
     const db = createServiceClient()
+
+    // Access control. B2B keys use their monthly quota; everyone else must be
+    // signed in (so anonymous traffic can't burn paid-API credit).
     const apiKey = req.headers.get('x-api-key')
-    const tierInfo = await getApiTierLimit(apiKey, db)
-    if (tierInfo === null) {
-      return NextResponse.json({ error: 'Invalid or inactive API key' }, { status: 401 })
+    const auth = await enforceApiKey(apiKey, async (keyHash) => {
+      const { data, error } = await db.rpc('increment_api_key_usage', { p_key_hash: keyHash })
+      if (error) throw error
+      return data?.[0] ?? null
+    })
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message ?? 'Unauthorised' }, { status: auth.status })
     }
 
-    // Save claim
+    const isApi = auth.tier === 'api'
+    let userId: string | null = null
+    if (!isApi) {
+      const supabase = await createSupabaseServerClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Sign in to check a claim.' }, { status: 401 })
+      }
+      userId = user.id
+
+      const ip = clientIpFromHeaders(req.headers)
+      const hourly = await rateLimit(`verify:h:${ip}`, IP_HOURLY_LIMIT, 3600)
+      if (!hourly.allowed) {
+        return NextResponse.json(
+          { error: 'Too many requests. Please try again shortly.' },
+          { status: 429, headers: { 'retry-after': String(hourly.resetSec) } },
+        )
+      }
+
+      // Per-account daily quota + global daily budget circuit-breaker.
+      const { data: quota } = await db.rpc('increment_user_usage', {
+        p_user_id: userId,
+        p_product: 'fountem',
+        p_limit: DEFAULT_DAILY_LIMITS.fountem,
+      })
+      const quotaRow = quota?.[0]
+      if (quotaRow && !quotaRow.allowed) {
+        return NextResponse.json(
+          { error: `Daily free limit reached (${quotaRow.day_limit} checks). It resets tomorrow.` },
+          { status: 429 },
+        )
+      }
+
+      const { data: budget } = await db.rpc('increment_global_budget', {
+        p_product: 'fountem',
+        p_cap: DEFAULT_GLOBAL_CAPS.fountem,
+      })
+      const budgetRow = budget?.[0]
+      if (budgetRow && !budgetRow.allowed) {
+        return NextResponse.json(
+          { error: 'Fountem is at capacity for today. Please try again tomorrow.' },
+          { status: 503 },
+        )
+      }
+    }
+
+    // Save claim.
     const { data: claim, error: claimError } = await db
       .from('claims')
       .insert({ claim_text: claimText, claim_type: 'statistic', status: 'processing', submitted_by: apiKey ? 'api' : 'web' })
       .select()
       .single()
-
     if (claimError || !claim) throw new Error(`Failed to save claim: ${claimError?.message}`)
 
-    // Retrieve evidence chunks
+    // Retrieve evidence.
     const chunks = await hybridRetrieve({ query: claimText, limit: 8, dbClient: db })
 
-    // Get source metadata for retrieved chunks
-    const sourceIds = [...new Set(chunks.map(c => c.source_id))]
-    const { data: sources } = await db.from('evidence_sources').select('id, title, url, publisher, published_at').in('id', sourceIds)
-    const sourceMetadata: Record<string, any> = {}
-    ;(sources ?? []).forEach((s: any) => { sourceMetadata[s.id] = s })
+    const sourceIds = [...new Set(chunks.map((c) => c.source_id))]
+    const { data: sources } = await db
+      .from('evidence_sources')
+      .select('id, title, url, publisher, published_at')
+      .in('id', sourceIds)
+    const sourceMetadata: Record<string, { title: string; url: string; publisher: string; published_at: string }> = {}
+    ;(sources ?? []).forEach((s) => {
+      sourceMetadata[s.id] = { title: s.title, url: s.url, publisher: s.publisher, published_at: s.published_at }
+    })
 
-    // Generate verdict with Claude
+    // Generate verdict with Claude (document-grounded, citations enforced).
     const verdictResult = await generateVerdict(claimText, chunks, sourceMetadata)
 
-    // Save verdict
     const { data: verdict, error: verdictError } = await db
       .from('verdicts')
       .insert({
@@ -72,13 +132,10 @@ export async function POST(req: NextRequest) {
       })
       .select()
       .single()
-
     if (verdictError || !verdict) throw new Error(`Failed to save verdict: ${verdictError?.message}`)
 
-    // Update claim status
     await db.from('claims').update({ status: 'complete' }).eq('id', claim.id)
 
-    // Create correction pack
     const slug = randomBytes(4).toString('base64url')
     const { data: pack } = await db
       .from('correction_packs')
@@ -86,10 +143,9 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    const card = serialiseClaimVerdict(verdict, claimText, pack ?? null)
-    return NextResponse.json(card)
+    return NextResponse.json(serialiseClaimVerdict(verdict, claimText, pack ?? null))
   } catch (error) {
-    console.error('Verify error:', error)
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Verification failed' }, { status: 500 })
+    captureException(error, { route: 'POST /api/verify' })
+    return NextResponse.json({ error: 'Verification failed. Please try again.' }, { status: 500 })
   }
 }

@@ -1,12 +1,12 @@
-import { VERDICT_META, GENERATOR_LABELS, confidenceLabel, CONFIDENCE_THRESHOLDS } from '../src/schema'
+import { VERDICT_META, GENERATOR_LABELS, confidenceLabel } from '../src/schema'
 
 describe('VERDICT_META', () => {
   it('has entries for all verdict values', () => {
-    const expected = ['true', 'mostly_true', 'half_true', 'mostly_false', 'false', 'misleading', 'unverifiable', 'inconclusive', 'ai_generated', 'likely_ai_generated', 'likely_real', 'real']
+    const expected: Array<keyof typeof VERDICT_META> = ['true', 'mostly_true', 'half_true', 'mostly_false', 'false', 'misleading', 'unverifiable', 'inconclusive', 'ai_generated', 'likely_ai_generated', 'likely_real', 'real']
     expected.forEach(v => {
-      expect(VERDICT_META[v as any]).toBeDefined()
-      expect(VERDICT_META[v as any].label).toBeTruthy()
-      expect(VERDICT_META[v as any].colour).toMatch(/^#[0-9a-f]{6}$/i)
+      expect(VERDICT_META[v]).toBeDefined()
+      expect(VERDICT_META[v].label).toBeTruthy()
+      expect(VERDICT_META[v].colour).toMatch(/^#[0-9a-f]{6}$/i)
     })
   })
 })

@@ -2,6 +2,8 @@
 
 import { useState } from 'react'
 import type { VerdictCard } from '@fountem/verdict'
+import { Button, Card } from '@fountem/ui'
+import { ClaimVerdictCard } from './ClaimVerdictCard'
 
 type State = 'idle' | 'loading' | 'result' | 'error'
 
@@ -12,19 +14,20 @@ const EXAMPLE_CLAIMS = [
   'The UK economy has grown faster than Germany since Brexit.',
 ]
 
-export function ClaimCheckForm() {
+export function ClaimCheckForm({ signedIn }: { signedIn: boolean }) {
   const [claim, setClaim] = useState('')
   const [state, setState] = useState<State>('idle')
   const [result, setResult] = useState<VerdictCard | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [needsLogin, setNeedsLogin] = useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!claim.trim()) return
-
     setState('loading')
     setError(null)
     setResult(null)
+    setNeedsLogin(false)
 
     try {
       const response = await fetch('/api/verify', {
@@ -33,12 +36,17 @@ export function ClaimCheckForm() {
         body: JSON.stringify({ claim: claim.trim() }),
       })
 
+      if (response.status === 401) {
+        setNeedsLogin(true)
+        setState('error')
+        return
+      }
       if (!response.ok) {
-        const data = await response.json() as { error?: string }
+        const data = (await response.json().catch(() => ({}))) as { error?: string }
         throw new Error(data.error ?? `Error ${response.status}`)
       }
 
-      const card = await response.json() as VerdictCard
+      const card = (await response.json()) as VerdictCard
       setResult(card)
       setState('result')
     } catch (err) {
@@ -49,129 +57,70 @@ export function ClaimCheckForm() {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <textarea
-          value={claim}
-          onChange={e => setClaim(e.target.value)}
-          placeholder="Enter a UK political claim to verify..."
-          rows={3}
-          className="w-full px-4 py-3 rounded-xl bg-zinc-900 border border-zinc-700 text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 text-sm resize-none transition-colors"
-          disabled={state === 'loading'}
-        />
-        <button
-          type="submit"
-          disabled={state === 'loading' || !claim.trim()}
-          className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-zinc-800 disabled:text-zinc-500 text-white font-medium transition-colors"
-        >
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="rounded-2xl border border-forest-200 bg-white p-2 shadow-card">
+          <textarea
+            value={claim}
+            onChange={(e) => setClaim(e.target.value)}
+            placeholder="Enter a UK political claim to verify…"
+            rows={3}
+            className="w-full resize-none bg-transparent px-3 py-2 text-sm text-ink placeholder-ink-muted focus:outline-none"
+            disabled={state === 'loading'}
+          />
+        </div>
+        <Button type="submit" disabled={state === 'loading' || !claim.trim()} className="w-full">
           {state === 'loading' ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Searching evidence database…
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-parchment/40 border-t-parchment" />
+              Searching the evidence corpus…
             </span>
-          ) : 'Verify claim'}
-        </button>
+          ) : (
+            'Verify claim'
+          )}
+        </Button>
+        {!signedIn && (
+          <p className="px-1 text-xs text-ink-muted">
+            Free plan: 10 checks/day. You&rsquo;ll be asked to sign in — it&rsquo;s how we keep the service free of abuse.
+          </p>
+        )}
       </form>
 
-      {/* Example claims */}
       {state === 'idle' && (
         <div>
-          <p className="text-zinc-600 text-xs uppercase tracking-wider mb-3">Try an example</p>
+          <p className="mb-3 text-xs uppercase tracking-widest text-ink-muted">Try an example</p>
           <div className="space-y-2">
-            {EXAMPLE_CLAIMS.map(c => (
+            {EXAMPLE_CLAIMS.map((c) => (
               <button
                 key={c}
                 onClick={() => setClaim(c)}
-                className="w-full text-left px-4 py-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 text-zinc-400 text-sm transition-colors"
+                className="w-full rounded-xl border border-forest-100 bg-white px-4 py-2.5 text-left text-sm text-ink-secondary transition-colors hover:border-forest-300 hover:bg-parchment-200"
               >
-                "{c}"
+                &ldquo;{c}&rdquo;
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {state === 'error' && (
-        <div className="rounded-xl border border-red-900 bg-red-950/30 p-4">
-          <p className="text-red-400 text-sm">{error}</p>
-        </div>
+      {state === 'error' && needsLogin && (
+        <Card className="flex flex-col items-start gap-3 border-forest-200 bg-forest-50">
+          <div>
+            <p className="font-medium text-forest-900">Sign in to check a claim</p>
+            <p className="mt-1 text-sm text-ink-secondary">Checks are free, but require an account so we can prevent abuse.</p>
+          </div>
+          <a href={`/login?next=${encodeURIComponent('/check')}`} className="text-sm font-medium text-forest-800 underline">
+            Log in or sign up →
+          </a>
+        </Card>
+      )}
+
+      {state === 'error' && !needsLogin && error && (
+        <Card className="border-red-200 bg-red-50">
+          <p className="text-sm text-red-700">{error}</p>
+        </Card>
       )}
 
       {state === 'result' && result && <ClaimVerdictCard card={result} />}
-    </div>
-  )
-}
-
-function ClaimVerdictCard({ card }: { card: VerdictCard }) {
-  const [copied, setCopied] = useState(false)
-
-  const colourMap: Record<string, { text: string; border: string; bg: string }> = {
-    true:         { text: 'text-green-400',  border: 'border-green-900',  bg: 'bg-green-950/30' },
-    mostly_true:  { text: 'text-green-400',  border: 'border-green-900',  bg: 'bg-green-950/30' },
-    half_true:    { text: 'text-yellow-400', border: 'border-yellow-900', bg: 'bg-yellow-950/30' },
-    mostly_false: { text: 'text-orange-400', border: 'border-orange-900', bg: 'bg-orange-950/30' },
-    false:        { text: 'text-red-400',    border: 'border-red-900',    bg: 'bg-red-950/30' },
-    misleading:   { text: 'text-orange-400', border: 'border-orange-900', bg: 'bg-orange-950/30' },
-    unverifiable: { text: 'text-zinc-400',   border: 'border-zinc-700',   bg: 'bg-zinc-900' },
-    inconclusive: { text: 'text-zinc-400',   border: 'border-zinc-700',   bg: 'bg-zinc-900' },
-  }
-  const colours = colourMap[card.verdict] ?? colourMap.inconclusive
-
-  async function copy() {
-    await navigator.clipboard.writeText(card.share_text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  return (
-    <div className={`rounded-xl border ${colours.border} ${colours.bg} p-6 space-y-5`}>
-      <div>
-        <span className={`text-xs font-bold uppercase tracking-widest ${colours.text}`}>{card.verdict_label}</span>
-        <div className="flex items-baseline gap-2 mt-2">
-          <span className={`text-4xl font-bold ${colours.text}`}>{card.confidence_pct}%</span>
-          <span className="text-zinc-500 text-sm">confidence</span>
-        </div>
-      </div>
-
-      <p className="text-white leading-relaxed">{card.summary}</p>
-      <p className="text-zinc-400 text-sm leading-relaxed">{card.reasoning}</p>
-
-      {/* Evidence chain */}
-      {card.source_citations && card.source_citations.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-zinc-500 text-xs uppercase tracking-wider">Evidence sources</h3>
-          {card.source_citations.map((cit: any, i: number) => (
-            <div key={i} className="px-4 py-3 rounded-lg bg-zinc-800/60 border-l-2 border-blue-600">
-              <div className="flex items-start justify-between gap-2 mb-1">
-                <span className="text-blue-400 text-xs font-medium">{cit.publisher}</span>
-                <span className="text-zinc-600 text-xs shrink-0">{cit.published_at}</span>
-              </div>
-              <p className="text-zinc-300 text-sm font-medium mb-1">{cit.source_title}</p>
-              {cit.excerpt && <p className="text-zinc-500 text-xs italic">"{cit.excerpt}"</p>}
-              <a href={cit.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-400 text-xs hover:text-blue-300 mt-1 block">
-                View source →
-              </a>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {card.what_would_change_this && (
-        <div className="border-t border-zinc-800 pt-4">
-          <h3 className="text-zinc-600 text-xs uppercase tracking-wider mb-1">What would change this verdict</h3>
-          <p className="text-zinc-400 text-sm leading-relaxed">{card.what_would_change_this}</p>
-        </div>
-      )}
-
-      <div className="flex items-center gap-3 pt-2 border-t border-zinc-800">
-        <button onClick={copy} className="flex-1 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm font-medium transition-colors">
-          {copied ? '✓ Copied' : 'Copy share text'}
-        </button>
-        {card.correction_pack_url && (
-          <a href={card.correction_pack_url} className="flex-1 py-2 rounded-lg bg-blue-900/50 hover:bg-blue-900 text-blue-300 text-sm font-medium text-center transition-colors">
-            Correction pack →
-          </a>
-        )}
-      </div>
     </div>
   )
 }

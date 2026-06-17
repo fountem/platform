@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const X_BEARER = process.env.X_BEARER_TOKEN
 const X_API_KEY = process.env.X_API_KEY
 const X_API_SECRET = process.env.X_API_SECRET
 const X_ACCESS_TOKEN = process.env.X_ACCESS_TOKEN
 const X_ACCESS_TOKEN_SECRET = process.env.X_ACCESS_TOKEN_SECRET
-const BOT_USER_ID = '...' // Set after @unfaked account is created
+const BOT_USER_ID = process.env.X_BOT_USER_ID ?? '' // numeric id of the @unfaked account
 
 // Simple HMAC-SHA1 OAuth 1.0a signing for X API v2
 async function signRequest(method: string, url: string, params: Record<string, string>): Promise<string> {
@@ -81,7 +80,7 @@ async function replyToTweet(tweetId: string, replyText: string): Promise<void> {
 }
 
 export async function GET(req: NextRequest) {
-  // Verify this is a legitimate Vercel Cron call
+  // Verify this is a legitimate scheduled call (Netlify scheduled function -> /api/cron).
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -95,10 +94,14 @@ export async function GET(req: NextRequest) {
       const videoUrl = await extractVideoUrl(tweet)
       if (!videoUrl) continue
 
-      // Call the Unfaked detection API
+      // Call the Unfaked detection API with the bot's API key so it uses the
+      // monthly B2B quota rather than the public per-IP limit.
       const detectionResponse = await fetch(`${process.env.UNFAKED_API_URL}/api/detect`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(process.env.UNFAKED_API_KEY ? { 'x-api-key': process.env.UNFAKED_API_KEY } : {}),
+        },
         body: JSON.stringify({ video_url: videoUrl }),
       })
 

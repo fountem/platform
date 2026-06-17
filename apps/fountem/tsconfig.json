@@ -1,0 +1,45 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
+    "jsx": "preserve",
+    "noEmit": true,
+    "allowJs": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@fountem/db": [
+        "../../packages/db/src/index.ts"
+      ],
+      "@fountem/rag": [
+        "../../packages/rag/src/index.ts"
+      ],
+      "@fountem/verdict": [
+        "../../packages/verdict/src/index.ts"
+      ],
+      "@fountem/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@fountem/ui": [
+        "../../packages/ui/src/index.ts"
+      ]
+    },
+    "isolatedModules": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

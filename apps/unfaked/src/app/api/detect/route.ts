@@ -1,76 +1,159 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@fountem/db'
-import { runDetectionPipeline } from '@fountem/detection'
+import { runDetectionPipeline, resolveMedia, shouldEscalateForReview } from '@fountem/detection'
 import { serialiseDetectionVerdict } from '@fountem/verdict'
+import {
+  rateLimit,
+  clientIpFromHeaders,
+  enforceApiKey,
+  validateSubmittedUrl,
+  captureException,
+  DEFAULT_DAILY_LIMITS,
+  DEFAULT_GLOBAL_CAPS,
+} from '@fountem/core'
 import { createHash, randomBytes } from 'crypto'
+import { createSupabaseServerClient } from '../../../lib/supabase/server'
 
-export const maxDuration = 60 // Vercel function timeout
+export const maxDuration = 60
 
-async function fetchVideoBuffer(url: string): Promise<Buffer> {
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'Unfaked/1.0 (unfaked.ai)' },
-  })
-  if (!response.ok) throw new Error(`Could not fetch video: ${response.status}`)
-
-  const contentType = response.headers.get('content-type') ?? ''
-  if (!contentType.includes('video') && !contentType.includes('octet-stream')) {
-    // For social media URLs, we'd use a headless browser in production
-    // For now, attempt direct fetch
-  }
-
-  const arrayBuffer = await response.arrayBuffer()
-  return Buffer.from(arrayBuffer)
-}
+// Per-IP safety net (in addition to per-account quotas) for signed-in users.
+const IP_HOURLY_LIMIT = Number(process.env.DETECT_IP_HOURLY_LIMIT ?? 15)
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json() as { video_url?: string }
+    const body = (await req.json().catch(() => ({}))) as { video_url?: string }
     const videoUrl = body.video_url?.trim()
-
     if (!videoUrl) {
       return NextResponse.json({ error: 'video_url is required' }, { status: 400 })
     }
 
+    // 1. SSRF pre-check (authoritative SSRF defence is in the resolver service).
+    const urlCheck = validateSubmittedUrl(videoUrl)
+    if (!urlCheck.ok) {
+      return NextResponse.json({ error: urlCheck.reason ?? 'Invalid URL' }, { status: 400 })
+    }
+
     const db = createServiceClient()
 
-    // Check for cached result by URL hash
-    const urlHash = createHash('sha256').update(videoUrl).digest('hex')
-    const { data: existing } = await db
-      .from('video_detections')
-      .select('*, correction_packs(*)')
-      .eq('video_hash', urlHash)
-      .single()
+    // 2. Access control. B2B keys use their monthly quota; everyone else must be
+    //    signed in (so anonymous traffic can't burn paid-API credit).
+    const apiKey = req.headers.get('x-api-key')
+    const auth = await enforceApiKey(apiKey, async (keyHash) => {
+      const { data, error } = await db.rpc('increment_api_key_usage', { p_key_hash: keyHash })
+      if (error) throw error
+      return data?.[0] ?? null
+    })
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message ?? 'Unauthorised' }, { status: auth.status })
+    }
 
-    if (existing) {
-      const pack = (existing as any).correction_packs?.[0]
-      if (pack) {
-        const card = serialiseDetectionVerdict(existing, pack)
-        return NextResponse.json(card)
+    const isApi = auth.tier === 'api'
+    let userId: string | null = null
+    if (!isApi) {
+      const supabase = await createSupabaseServerClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) {
+        return NextResponse.json({ error: 'Sign in to run a check.' }, { status: 401 })
+      }
+      userId = user.id
+
+      // Per-IP safety net against a single compromised account.
+      const ip = clientIpFromHeaders(req.headers)
+      const hourly = await rateLimit(`detect:h:${ip}`, IP_HOURLY_LIMIT, 3600)
+      if (!hourly.allowed) {
+        return NextResponse.json(
+          { error: 'Too many requests. Please try again shortly.' },
+          { status: 429, headers: { 'retry-after': String(hourly.resetSec) } },
+        )
       }
     }
 
-    // Fetch video
-    const videoBuffer = await fetchVideoBuffer(videoUrl)
+    // 3. Cache lookup by URL hash (cached results don't consume quota/budget).
+    const urlHash = createHash('sha256').update(videoUrl).digest('hex')
+    const { data: existing } = await db
+      .from('video_detections')
+      .select('*')
+      .eq('video_hash', urlHash)
+      .maybeSingle()
 
-    // Run 3-layer detection pipeline
-    const detectionResult = await runDetectionPipeline(videoBuffer, videoUrl)
+    if (existing) {
+      let { data: pack } = await db
+        .from('correction_packs')
+        .select('*')
+        .eq('detection_id', existing.id)
+        .maybeSingle()
+      if (!pack) {
+        // Detection exists but pack was never created — create it now (no re-run).
+        const slug = randomBytes(4).toString('base64url')
+        const created = await db
+          .from('correction_packs')
+          .insert({ slug, detection_id: existing.id })
+          .select()
+          .single()
+        pack = created.data
+      }
+      return NextResponse.json(serialiseDetectionVerdict(existing, pack))
+    }
 
-    // Save detection to database
+    // 4. Enforce spend limits for a real (uncached) run: per-account daily quota
+    //    + global daily budget circuit-breaker.
+    if (!isApi && userId) {
+      const { data: quota } = await db.rpc('increment_user_usage', {
+        p_user_id: userId,
+        p_product: 'unfaked',
+        p_limit: DEFAULT_DAILY_LIMITS.unfaked,
+      })
+      const quotaRow = quota?.[0]
+      if (quotaRow && !quotaRow.allowed) {
+        return NextResponse.json(
+          { error: `Daily free limit reached (${quotaRow.day_limit} checks). It resets tomorrow.` },
+          { status: 429 },
+        )
+      }
+
+      const { data: budget } = await db.rpc('increment_global_budget', {
+        p_product: 'unfaked',
+        p_cap: DEFAULT_GLOBAL_CAPS.unfaked,
+      })
+      const budgetRow = budget?.[0]
+      if (budgetRow && !budgetRow.allowed) {
+        return NextResponse.json(
+          { error: 'Unfaked is at capacity for today. Please try again tomorrow.' },
+          { status: 503 },
+        )
+      }
+    }
+
+    // 5. Resolve media via the AWS resolver (download + ffprobe + C2PA + cross-modal).
+    const media = await resolveMedia(videoUrl)
+
+    // 5. Run the multi-signal detection pipeline.
+    const result = await runDetectionPipeline(media)
+    const reviewStatus = shouldEscalateForReview(result) ? 'pending_review' : 'automated'
+
+    // 6. Persist.
     const { data: detection, error: detectionError } = await db
       .from('video_detections')
       .insert({
         video_url: videoUrl,
         video_hash: urlHash,
-        verdict: detectionResult.verdict,
-        confidence_pct: detectionResult.confidence_pct,
-        probable_generator: detectionResult.probable_generator || null,
-        reasoning: detectionResult.reasoning,
-        what_would_change_this: detectionResult.what_would_change_this,
-        evasion_detected: detectionResult.evasion_detected,
-        evasion_description: detectionResult.evasion_description || null,
-        layer1_signals: detectionResult.layer1_signals,
-        layer2_signals: detectionResult.layer2_signals,
-        layer3_signals: detectionResult.layer3_signals,
+        verdict: result.verdict as never,
+        confidence_pct: result.confidence_pct,
+        confidence_low: result.confidence_low,
+        confidence_high: result.confidence_high,
+        probable_generator: result.probable_generator,
+        reasoning: result.reasoning,
+        what_would_change_this: result.what_would_change_this,
+        evasion_detected: result.evasion_detected as never,
+        evasion_description: result.evasion_description,
+        vendor_disagreement: result.vendor_disagreement,
+        signal_breakdown: result.signal_breakdown,
+        review_status: reviewStatus,
+        layer1_signals: result.layer1_signals,
+        layer2_signals: result.layer2_signals,
+        layer3_signals: result.layer3_signals,
         is_public: true,
       })
       .select()
@@ -80,14 +163,11 @@ export async function POST(req: NextRequest) {
       throw new Error(`Failed to save detection: ${detectionError?.message}`)
     }
 
-    // Create correction pack
+    // 7. Correction pack.
     const slug = randomBytes(4).toString('base64url')
     const { data: pack, error: packError } = await db
       .from('correction_packs')
-      .insert({
-        slug,
-        detection_id: detection.id,
-      })
+      .insert({ slug, detection_id: detection.id })
       .select()
       .single()
 
@@ -95,12 +175,11 @@ export async function POST(req: NextRequest) {
       throw new Error(`Failed to create correction pack: ${packError?.message}`)
     }
 
-    const card = serialiseDetectionVerdict(detection, pack)
-    return NextResponse.json(card)
+    return NextResponse.json(serialiseDetectionVerdict(detection, pack))
   } catch (error) {
-    console.error('Detection error:', error)
+    captureException(error, { route: 'POST /api/detect' })
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Detection failed' },
+      { error: 'Detection failed. Please try again.' },
       { status: 500 }
     )
   }

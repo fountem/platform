@@ -8,11 +8,23 @@ const mockDetection: VideoDetection = {
   video_hash: 'abc123',
   verdict: 'ai_generated',
   confidence_pct: 91,
+  confidence_low: 85,
+  confidence_high: 97,
   probable_generator: 'veo',
   reasoning: 'Strong Veo temporal signature detected across all 3 layers.',
   what_would_change_this: 'A verified C2PA manifest from a trusted camera would change this verdict.',
   evasion_detected: 'no',
   evasion_description: null,
+  vendor_disagreement: false,
+  signal_breakdown: {
+    contributions: [{ label: 'Forensic (Hive + Sensity)', score: 0.9, weight: 0.5, detail: 'Hive 94%, Sensity 91%' }],
+    composite_score: 0.91,
+    provenance_short_circuit: false,
+  },
+  review_status: 'automated',
+  reviewed_by: null,
+  reviewed_at: null,
+  reviewer_notes: null,
   layer1_signals: {
     hive_ai_generated_score: 0.94,
     hive_deepfake_score: 0.87,
@@ -21,14 +33,18 @@ const mockDetection: VideoDetection = {
     physics_anomaly: false,
     texture_artifacts: true,
     generator_fingerprint: 'veo',
+    quality_degraded: false,
   },
   layer2_signals: {
     c2pa_manifest_present: false,
     c2pa_valid: false,
     c2pa_provenance_chain: [],
+    c2pa_signature_issuer: null,
     synthid_detected: null,
+    watermark_other: null,
     metadata_stripped: true,
     container_format: 'mp4',
+    reverse_image_first_seen: null,
   },
   layer3_signals: {
     channel_age_days: 3,
@@ -37,6 +53,8 @@ const mockDetection: VideoDetection = {
     clip_transition_intervals: [2.0, 2.0, 2.0],
     behavioural_plausibility_score: 0.2,
     contextual_red_flags: ['Channel created 3 days ago', 'Only 2 videos uploaded', 'Uniform clip intervals suggest automated generation'],
+    audio_visual_sync_score: 0.4,
+    lip_sync_anomaly: true,
   },
   is_public: true,
   case_title: 'Fake Farage Rally Video',
@@ -87,6 +105,15 @@ describe('serialiseDetectionVerdict', () => {
     const card = serialiseDetectionVerdict(mockDetection, null)
     expect(card.correction_pack_url).toBeNull()
     expect(card.correction_pack_slug).toBeNull()
+  })
+
+  it('exposes calibrated band, disclaimer and signal breakdown', () => {
+    const card = serialiseDetectionVerdict(mockDetection, mockPack)
+    expect(card.confidence_low).toBe(85)
+    expect(card.confidence_high).toBe(97)
+    expect(card.disclaimer).toContain('not definitive proof')
+    expect(card.signal_breakdown!.contributions.length).toBeGreaterThan(0)
+    expect(card.review_status).toBe('automated')
   })
 })
 

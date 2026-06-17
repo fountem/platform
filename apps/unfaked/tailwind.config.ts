@@ -1,11 +1,11 @@
 import type { Config } from 'tailwindcss'
+import preset from '../../packages/ui/tailwind-preset'
+
 const config: Config = {
-  content: ['./src/**/*.{js,ts,jsx,tsx,mdx}'],
-  theme: {
-    extend: {
-      colors: { brand: { red: '#ef4444', dark: '#1d1d1f' } },
-      fontFamily: { sans: ['Inter', '-apple-system', 'sans-serif'] },
-    },
-  },
+  presets: [preset as Partial<Config> as Config],
+  content: [
+    './src/**/*.{js,ts,jsx,tsx,mdx}',
+    '../../packages/ui/src/**/*.{js,ts,jsx,tsx}',
+  ],
 }
 export default config
