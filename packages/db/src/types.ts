@@ -242,6 +242,18 @@ export type ServiceBudget = {
   count: number
 }
 
+export type BotCursor = {
+  bot: string
+  since_id: string | null
+  updated_at: string
+}
+
+export type ProcessedMention = {
+  tweet_id: string
+  replied: boolean
+  processed_at: string
+}
+
 // Supabase Database type for generic client.
 // NOTE: Views / CompositeTypes keys are required for supabase-js (>=2.47) to infer
 // the public schema; without them the client falls back to `never` for all ops.
@@ -262,6 +274,8 @@ export interface Database {
       profiles: { Row: Profile; Insert: Partial<Profile>; Update: Partial<Profile>; Relationships: [] }
       user_usage: { Row: UserUsage; Insert: Partial<UserUsage>; Update: Partial<UserUsage>; Relationships: [] }
       service_budget: { Row: ServiceBudget; Insert: Partial<ServiceBudget>; Update: Partial<ServiceBudget>; Relationships: [] }
+      bot_cursor: { Row: BotCursor; Insert: Partial<BotCursor>; Update: Partial<BotCursor>; Relationships: [] }
+      processed_mentions: { Row: ProcessedMention; Insert: Partial<ProcessedMention>; Update: Partial<ProcessedMention>; Relationships: [] }
     }
     Views: { [_ in never]: never }
     CompositeTypes: { [_ in never]: never }

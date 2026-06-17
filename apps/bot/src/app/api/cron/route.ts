@@ -1,4 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createServiceClient } from '@fountem/db'
+import { nextSinceId, pickBatch } from '../../../lib/cursor'
+
+// Identifies this bot's cursor row in public.bot_cursor.
+const BOT_ID = 'unfaked'
+
+// Cap mentions handled per invocation so the cron stays under the function
+// timeout (each one does a detection call + reply). Backlog drains over runs.
+const MAX_MENTIONS_PER_RUN = Number(process.env.BOT_MAX_MENTIONS_PER_RUN ?? '3')
 
 const X_API_KEY = process.env.X_API_KEY
 const X_API_SECRET = process.env.X_API_SECRET
@@ -87,10 +96,35 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const mentions = await getMentions()
+    const db = createServiceClient()
+
+    // Resume from the last processed mention so we only pull new ones.
+    const { data: cursorRow } = await db
+      .from('bot_cursor')
+      .select('since_id')
+      .eq('bot', BOT_ID)
+      .maybeSingle()
+    const sinceId = cursorRow?.since_id ?? undefined
+
+    const mentions = await getMentions(sinceId)
     const results: string[] = []
 
-    for (const tweet of mentions) {
+    // Process the oldest new mentions first, capped per run. Anything beyond the
+    // cap is picked up next run (the cursor only advances past the handled batch).
+    const byId = new Map(mentions.map(t => [String(t.id), t]))
+    const batchIds = pickBatch([...byId.keys()], MAX_MENTIONS_PER_RUN)
+
+    for (const tweetId of batchIds) {
+      const tweet = byId.get(tweetId)!
+      // Atomically claim the mention: insert ignoring duplicates. If another run
+      // (or an earlier pass) already claimed it, `inserted` is empty — skip so we
+      // never reply to the same tweet twice.
+      const { data: inserted } = await db
+        .from('processed_mentions')
+        .upsert({ tweet_id: tweet.id }, { onConflict: 'tweet_id', ignoreDuplicates: true })
+        .select('tweet_id')
+      if (!inserted || inserted.length === 0) continue
+
       const videoUrl = await extractVideoUrl(tweet)
       if (!videoUrl) continue
 
@@ -111,7 +145,17 @@ export async function GET(req: NextRequest) {
       const replyText = `${card.share_text}\n\nVerdict: ${card.verdict_label} (${card.confidence_pct}% confidence)\n${card.correction_pack_url}`
 
       await replyToTweet(tweet.id, replyText)
+      await db.from('processed_mentions').update({ replied: true }).eq('tweet_id', tweet.id)
       results.push(`Replied to tweet ${tweet.id}`)
+    }
+
+    // Advance the cursor only past the batch we actually handled, so any
+    // mentions beyond the per-run cap are fetched again next run.
+    const newSinceId = nextSinceId(sinceId, batchIds)
+    if (newSinceId && newSinceId !== sinceId) {
+      await db
+        .from('bot_cursor')
+        .upsert({ bot: BOT_ID, since_id: newSinceId, updated_at: new Date().toISOString() }, { onConflict: 'bot' })
     }
 
     return NextResponse.json({ processed: results.length, results })

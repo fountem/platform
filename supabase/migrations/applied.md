@@ -15,6 +15,7 @@ All 7 migrations applied manually via Supabase SQL Editor on 2026-06-16.
 | 009_api_key_usage | ⏳ Pending | atomic `increment_api_key_usage()` RPC |
 | 010_rls_complete | ⏳ Pending | RLS for parties/issues/positions/track records/api_keys + write locks |
 | 011_auth_quotas | ⏳ Pending | profiles (+ signup trigger), user_usage, service_budget, increment_user_usage() / increment_global_budget() RPCs, RLS |
+| 012_bot_state | ⏳ Pending | bot_cursor (since_id), processed_mentions (dedupe) for X-bot idempotency; RLS (service-role only) |
 
 > Apply pending migrations in order via the Supabase SQL editor (or `supabase db push`)
 > before go-live. They are additive and safe to run on the existing schema.

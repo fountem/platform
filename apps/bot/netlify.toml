@@ -3,7 +3,7 @@
 # The bot poll runs via a Netlify Scheduled Function (netlify/functions/poll.mts)
 # which calls /api/cron every 5 minutes — Netlify has no Vercel-style crons.
 [build]
-  command = "cd ../.. && npx turbo run build --filter=bot"
+  command = "cd ../.. && npx turbo run build --filter=unfaked-bot"
   publish = ".next"
 
 [[plugins]]
