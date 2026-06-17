@@ -1,4 +1,5 @@
 import type { Layer1Signals } from '@fountem/db'
+import { isMockMode, mockLayer1 } from './mock'
 
 /**
  * Layer 1 — Forensic.
@@ -62,6 +63,8 @@ export async function runLayer1(
   _videoUrl: string,
   opts: Layer1Options = {}
 ): Promise<Layer1Signals> {
+  if (isMockMode()) return mockLayer1(_videoUrl, opts.qualityDegraded ?? false)
+
   const hiveKey = process.env.HIVE_API_KEY
   if (!hiveKey) throw new Error('HIVE_API_KEY not set')
   const fetchImpl = opts.fetchImpl ?? fetch

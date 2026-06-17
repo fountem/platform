@@ -55,11 +55,15 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
                 <Link href="/check" className="block text-forest-100/80 hover:text-parchment">Check a claim</Link>
                 <Link href="/parties" className="block text-forest-100/80 hover:text-parchment">Parties</Link>
                 <Link href="/methodology" className="block text-forest-100/80 hover:text-parchment">Methodology</Link>
+                <a href="https://unfaked.ai" className="block text-forest-100/80 hover:text-parchment">Unfaked</a>
               </div>
               <div className="space-y-2">
-                <div className="text-xs uppercase tracking-widest text-forest-100/50">More</div>
+                <div className="text-xs uppercase tracking-widest text-forest-100/50">Legal</div>
                 <Link href="/privacy" className="block text-forest-100/80 hover:text-parchment">Privacy</Link>
-                <a href="https://unfaked.ai" className="block text-forest-100/80 hover:text-parchment">Unfaked</a>
+                <Link href="/terms" className="block text-forest-100/80 hover:text-parchment">Terms</Link>
+                <Link href="/acceptable-use" className="block text-forest-100/80 hover:text-parchment">Acceptable use</Link>
+                <Link href="/cookies" className="block text-forest-100/80 hover:text-parchment">Cookies</Link>
+                <Link href="/disclaimer" className="block text-forest-100/80 hover:text-parchment">Disclaimer</Link>
               </div>
             </div>
           </div>

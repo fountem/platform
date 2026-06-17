@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalEnv": ["MOCK_SERVICES", "NEXT_PUBLIC_MOCK_SERVICES"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@fountem/db'
-import { hybridRetrieve, generateVerdict } from '@fountem/rag'
+import type { Verdict, CorrectionPack } from '@fountem/db'
+import { hybridRetrieve, generateVerdict, mockRetrieve, mockGenerateVerdict } from '@fountem/rag'
 import { serialiseClaimVerdict } from '@fountem/verdict'
 import {
   rateLimit,
   clientIpFromHeaders,
   enforceApiKey,
   captureException,
+  isMockMode,
   DEFAULT_DAILY_LIMITS,
   DEFAULT_GLOBAL_CAPS,
 } from '@fountem/core'
@@ -27,6 +29,37 @@ export async function POST(req: NextRequest) {
     }
     if (claimText.length > 500) {
       return NextResponse.json({ error: 'claim must be under 500 characters' }, { status: 400 })
+    }
+
+    // Offline/demo mode: run the real verdict shaping on mock evidence, skip auth/quota/DB.
+    if (isMockMode()) {
+      const { chunks, sourceMetadata } = mockRetrieve(claimText)
+      const verdictResult = mockGenerateVerdict(claimText, chunks, sourceMetadata)
+      const now = new Date().toISOString()
+      const verdict: Verdict = {
+        id: `mock-${randomBytes(6).toString('hex')}`,
+        claim_id: `mock-claim-${randomBytes(4).toString('hex')}`,
+        verdict: verdictResult.verdict,
+        confidence_pct: verdictResult.confidence_pct,
+        summary: verdictResult.summary,
+        reasoning: verdictResult.reasoning,
+        what_would_change_this: verdictResult.what_would_change_this,
+        evidence_chunk_ids: verdictResult.evidence_chunk_ids,
+        source_citations: verdictResult.source_citations,
+        model_used: 'mock',
+        prompt_tokens: verdictResult.prompt_tokens,
+        completion_tokens: verdictResult.completion_tokens,
+        reviewed_by: null,
+        reviewed_at: null,
+        probable_generator: null,
+        evasion_detected: null,
+        created_at: now,
+      }
+      const pack: CorrectionPack = {
+        id: 'mock-pack', slug: randomBytes(4).toString('base64url'),
+        verdict_id: verdict.id, detection_id: null, og_image_url: null, share_count: 0, created_at: now,
+      }
+      return NextResponse.json(serialiseClaimVerdict(verdict, claimText, pack))
     }
 
     const db = createServiceClient()

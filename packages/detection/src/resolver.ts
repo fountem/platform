@@ -14,6 +14,8 @@
  * on serverless, and gives us one hardened choke point for abuse prevention.
  */
 
+import { isMockMode, mockResolveMedia } from './mock'
+
 export interface FfprobeMetadata {
   container_format: string | null
   video_codec: string | null
@@ -101,6 +103,8 @@ export interface ResolveOptions {
  *   RESOLVER_API_KEY      — shared secret for service-to-service auth
  */
 export async function resolveMedia(url: string, opts: ResolveOptions = {}): Promise<ResolvedMedia> {
+  if (isMockMode()) return mockResolveMedia(url)
+
   const base = process.env.RESOLVER_URL
   const key = process.env.RESOLVER_API_KEY
   if (!base) throw new ResolverError('RESOLVER_URL not configured')

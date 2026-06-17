@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@fountem/db'
+import type { VideoDetection, CorrectionPack, DetectionVerdict, EvasionStatus } from '@fountem/db'
 import { runDetectionPipeline, resolveMedia, shouldEscalateForReview } from '@fountem/detection'
 import { serialiseDetectionVerdict } from '@fountem/verdict'
 import {
@@ -8,6 +9,7 @@ import {
   enforceApiKey,
   validateSubmittedUrl,
   captureException,
+  isMockMode,
   DEFAULT_DAILY_LIMITS,
   DEFAULT_GLOBAL_CAPS,
 } from '@fountem/core'
@@ -31,6 +33,45 @@ export async function POST(req: NextRequest) {
     const urlCheck = validateSubmittedUrl(videoUrl)
     if (!urlCheck.ok) {
       return NextResponse.json({ error: urlCheck.reason ?? 'Invalid URL' }, { status: 400 })
+    }
+
+    // Offline/demo mode: run the real pipeline on mock signals, skip auth/quota/DB.
+    if (isMockMode()) {
+      const media = await resolveMedia(videoUrl)
+      const result = await runDetectionPipeline(media)
+      const now = new Date().toISOString()
+      const detection: VideoDetection = {
+        id: `mock-${createHash('sha256').update(videoUrl).digest('hex').slice(0, 12)}`,
+        claim_id: null,
+        video_url: videoUrl,
+        video_hash: createHash('sha256').update(videoUrl).digest('hex'),
+        verdict: result.verdict as DetectionVerdict,
+        confidence_pct: result.confidence_pct,
+        confidence_low: result.confidence_low,
+        confidence_high: result.confidence_high,
+        probable_generator: result.probable_generator,
+        reasoning: result.reasoning,
+        what_would_change_this: result.what_would_change_this,
+        evasion_detected: result.evasion_detected as EvasionStatus,
+        evasion_description: result.evasion_description,
+        vendor_disagreement: result.vendor_disagreement,
+        signal_breakdown: result.signal_breakdown,
+        review_status: shouldEscalateForReview(result) ? 'pending_review' : 'automated',
+        reviewed_by: null,
+        reviewed_at: null,
+        reviewer_notes: null,
+        layer1_signals: result.layer1_signals,
+        layer2_signals: result.layer2_signals,
+        layer3_signals: result.layer3_signals,
+        is_public: true,
+        case_title: null,
+        created_at: now,
+      }
+      const pack: CorrectionPack = {
+        id: 'mock-pack', slug: randomBytes(4).toString('base64url'),
+        verdict_id: null, detection_id: detection.id, og_image_url: null, share_count: 0, created_at: now,
+      }
+      return NextResponse.json(serialiseDetectionVerdict(detection, pack))
     }
 
     const db = createServiceClient()

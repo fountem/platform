@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import type { Layer3Signals } from '@fountem/db'
 import type { PlatformMetadata, CrossModalResult } from './resolver'
+import { isMockMode, mockLayer3 } from './mock'
 
 /**
  * Layer 3 — Contextual.
@@ -75,6 +76,8 @@ function clamp01(n: number): number {
 }
 
 export async function runLayer3(input: Layer3Input): Promise<Layer3Signals> {
+  if (isMockMode()) return mockLayer3(input)
+
   const { platform, crossModal } = input
   const contextual = await runGPTContextualAnalysis(input)
 

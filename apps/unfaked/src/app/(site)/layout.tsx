@@ -53,13 +53,16 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
                 <div className="text-xs uppercase tracking-widest text-forest-100/50">Product</div>
                 <Link href="/cases" className="block text-forest-100/80 hover:text-parchment">Archive</Link>
                 <Link href="/methodology" className="block text-forest-100/80 hover:text-parchment">Methodology</Link>
-                <Link href="/privacy" className="block text-forest-100/80 hover:text-parchment">Privacy</Link>
-              </div>
-              <div className="space-y-2">
-                <div className="text-xs uppercase tracking-widest text-forest-100/50">More</div>
                 <a href="https://fountem.ai" className="block text-forest-100/80 hover:text-parchment">Fountem</a>
                 <a href="mailto:press@unfaked.ai" className="block text-forest-100/80 hover:text-parchment">Press</a>
-                <a href="https://twitter.com/unfaked" className="block text-forest-100/80 hover:text-parchment">@unfaked</a>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs uppercase tracking-widest text-forest-100/50">Legal</div>
+                <Link href="/privacy" className="block text-forest-100/80 hover:text-parchment">Privacy</Link>
+                <Link href="/terms" className="block text-forest-100/80 hover:text-parchment">Terms</Link>
+                <Link href="/acceptable-use" className="block text-forest-100/80 hover:text-parchment">Acceptable use</Link>
+                <Link href="/cookies" className="block text-forest-100/80 hover:text-parchment">Cookies</Link>
+                <Link href="/disclaimer" className="block text-forest-100/80 hover:text-parchment">Disclaimer</Link>
               </div>
             </div>
           </div>

@@ -9,6 +9,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { VerdictValue, SourceCitation } from '@fountem/db'
 import type { RetrievedChunk } from './retriever'
+import { isMockMode, mockGenerateVerdict } from './mock'
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -48,6 +49,8 @@ export async function generateVerdict(
   chunks: RetrievedChunk[],
   sourceMetadata: Record<string, { title: string; url: string; publisher: string; published_at: string }>
 ): Promise<RagVerdictResult> {
+  if (isMockMode()) return mockGenerateVerdict(claimText, chunks, sourceMetadata)
+
   if (chunks.length === 0) {
     return {
       verdict: 'unverifiable',

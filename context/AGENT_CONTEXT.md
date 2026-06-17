@@ -267,6 +267,17 @@ context/
 │   ├── tech-stack-blueprint.md
 │   ├── ai-video-detection-spec.md
 │   └── ai-video-detection-agent-prompt.md
+├── legal/
+│   ├── README.md                       ← legal package index + posture
+│   ├── uk-eu-legal-landscape.md        ← every applicable law + what it requires
+│   ├── defamation-liability-memo.md    ← defamation defences + verdict-wording rules
+│   ├── dpia.md                         ← Data Protection Impact Assessment (UK GDPR)
+│   ├── legal-risk-register.md          ← risk × likelihood × mitigation
+│   ├── compliance-checklist.md         ← pre-launch legal gate (blocking vs advisory)
+│   ├── content-takedown-right-of-reply-policy.md
+│   ├── contract-review-product-terms.md ← ToS/AUP review via contract-review skill
+│   ├── b2b-api-agreement.md            ← B2B API MSA template (Order Form + SLA + DPA stub)
+│   └── contract-review-b2b-api-agreement.md ← skill review of the API agreement
 └── data/
     ├── schema-overview.md
     ├── parties.csv
@@ -324,6 +335,28 @@ work is provisioning/deploy, not coding:
 7. **End-to-end test** — Wakefield deepfake case (`/cases`).
 8. **Outreach** — Full Fact, Demos, Electoral Commission, Alan Turing Institute.
 
+## Local mock / offline mode (run everything with no keys)
+
+`MOCK_SERVICES=1` (server) + `NEXT_PUBLIC_MOCK_SERVICES=1` (client) make the whole platform
+run locally with **no external services** — no AWS resolver, no Hive/Sensity, no
+OpenAI/Anthropic, no Supabase. Shortcut: **`npm run dev:mock`**.
+
+- Flag + helpers: `packages/core/src/mock.ts` (`isMockMode`, `seededUnit`, `seededPick`).
+- Detection fixtures: `packages/detection/src/mock.ts` — `resolveMedia`, `runLayer1`,
+  `runLayer3` short-circuit to deterministic, URL-steered fixtures (keywords: `deepfake/
+  fake/synthetic/sora…` → AI; `real/authentic/c2pa…` → provenance-backed real). The **real**
+  synthesiser/temporal/provenance code still runs — only inputs are faked.
+- RAG fixtures: `packages/rag/src/mock.ts` — `mockRetrieve` (canned ONS/IFS/Hansard chunks)
+  + `mockGenerateVerdict` (real verdict/citation shaping). `generateVerdict` short-circuits too.
+- Routes: `/api/detect` and `/api/verify` have an `isMockMode()` branch that skips
+  auth/quota/DB and returns a serialised verdict, so the UI works click-through **without
+  login or a database**. Forms already tolerate logged-out posting.
+- Tests: `packages/{core,detection,rag}/__tests__/mock.test.ts`. Smoke-tested end-to-end:
+  deepfake URL → `ai_generated` (Sora, provenance short-circuit, bands); C2PA URL → `real`
+  (Truepic); claim → verdict with ONS/IFS/Parliament citations.
+- Turbo: `globalEnv` passes `MOCK_SERVICES` / `NEXT_PUBLIC_MOCK_SERVICES`. `.env.example`
+  documents the flags (default 0).
+
 ## Build / verify commands
 
 ```bash
@@ -350,6 +383,9 @@ Everything below was implemented, type-checked, tested and linted this session:
 - **RAG (Phase 4):** atomic claim decomposition + aggregation; pure eval scoring; rewritten `seed-evidence.ts`, `seed-reference.ts`, `eval-harness.ts`; fixed party pages + issue slug alignment.
 - **Differentiators UI (Phase 5):** human-review queue API + `/admin/review` page; calibrated bands + provenance + disclaimers in Unfaked detect/correction-pack UI and Fountem claim/pack UI; rewritten Unfaked **and** Fountem methodology pages (truth-in-advertising).
 - **Legal (Phase 6):** `/privacy` GDPR pages for both apps; not-definitive disclaimers throughout.
+- **Legal research package (June 17, 2026):** full `/context/legal/` folder — UK/EU legal landscape (defamation, UK GDPR, OSA 2023, RPA 1983 s.106 + Elections Act 2022 digital imprints, EU AI Act Art.50, copyright/database rights, PECR, consumer/UCTA), defamation/liability memo with mandatory verdict-wording rules, DPIA + LIA, legal risk register, pre-launch compliance checklist, and a content-takedown/right-of-reply policy. Shipped user-facing legal pages for **both apps**: `/terms`, `/acceptable-use`, `/cookies`, `/disclaimer`, and expanded `/privacy`; wired a "Legal" column into both footers. Key live-date findings: EU AI Act Art.50 transparency applies **2 Aug 2026** (Art.50(4) text-disclosure touches Fountem's AI-generated verdicts; the deepfake-generation limb does **not** bite Unfaked, which detects); OSA illegal-content duties in force since 17 Mar 2025 (we are likely **not** an in-scope U2U service — documented); digital-imprint regime in force 1 Nov 2023 (non-partisan posture → organic imprints likely N/A; no paid political ads without counsel). All P0 blockers (DPAs/IDTA, ICO fee, key rotation, insurance, counsel sign-off) tracked in the risk register/checklist. **Not legal advice — needs counsel review before launch.** Type-check + lint green.
+- **Contract review via the `contract-review` (claude-legal) skill (June 17, 2026):** installed the open Agent Skill `evolsb/claude-legal-skill` to `~/.cursor/skills/contract-review` and ran its CUAD-based, position-aware methodology over both apps' **Terms of Service** + **Acceptable Use Policy**, re-basing its US defaults to England & Wales (CRA 2015 / UCTA 1977 / consumer regs). Report: `context/legal/contract-review-product-terms.md`. Findings led to hardening **both ToS** (`apps/*/src/app/(site)/terms/page.tsx`): added a CRA-fair **variation-notice + right-to-reject** clause, a **two-tier defined liability cap** (£100 free tier; B2B cap → API agreement), **user termination-for-convenience**, **suspension with notice/cure**, a **General/boilerplate** section (severability, entire agreement, exclusion of third-party rights, assignment, force majeure, notices), a **complaints/ICO** signpost, and company-identity placeholders. Type-check (both apps) + ESLint green.
+- **B2B API Agreement + review (June 17, 2026):** drafted the **Fountem API Services Agreement** (`context/legal/b2b-api-agreement.md`) — UK-law MSA template with an **Order Form (Schedule 1)**, **SLA (Schedule 2)** (99.9% uptime, tiered service credits as sole remedy, chronic-failure termination), and a **DPA stub (Schedule 3)** to complete with counsel. Covers licence/quotas/API keys, fees + capped price increases, term/renewal, termination-for-convenience + 30-day cure, suspension with notice, controller/processor split + subprocessors + 90-day data export, IP/feedback, "assessment-not-proof" risk allocation, mutual capped indemnities (narrow IP defence; **no** broad content/defamation indemnity), 12-month liability cap with non-excludable carve-outs, confidentiality, insurance, anti-bribery, and E&W governing law. Then ran the **contract-review skill's SaaS/MSA checklist** over it (`contract-review-b2b-api-agreement.md`): result 🟢 low–medium risk to us, on market standard; folded in the cheap fixes (order-of-precedence, Confidential Information definition, insurance §13A, compliance/anti-bribery §13B). **Blocking before first signature:** complete the DPA (Schedule 3) + UK IDTA (risk-register R-3/R-8) and bind insurance (R-15). Counsel sign-off required on §§12–13 + Schedule 3.
 - **Deploy (Phase 7):** switched Vercel→Netlify (`apps/*/netlify.toml`, removed `vercel.json`); bot cron as Netlify Scheduled Function (`apps/bot/netlify/functions/poll.mts`); expanded root `.env.example`; this context update.
 
 **Status:** code-complete and green. Outstanding items are infra provisioning + secrets + seeding (see "What To Do Next").

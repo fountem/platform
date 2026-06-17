@@ -8,6 +8,7 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
+    "dev:mock": "MOCK_SERVICES=1 NEXT_PUBLIC_MOCK_SERVICES=1 turbo run dev",
     "build": "turbo run build",
     "lint": "eslint . --max-warnings 0",
     "test": "jest --passWithNoTests",
