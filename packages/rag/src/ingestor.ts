@@ -2,7 +2,12 @@ import OpenAI from 'openai'
 import { chunkDocument } from './chunker'
 import type { SourceType } from '@fountem/db'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// Lazy-init so importing this module doesn't require OPENAI_API_KEY at build.
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 export interface IngestSourceOptions {
   sourceType: SourceType
@@ -33,7 +38,7 @@ export async function ingestSource(opts: IngestSourceOptions): Promise<{ sourceI
 
   // Embed all chunks
   const texts = chunks.map(c => c.content)
-  const embeddingResponse = await openai.embeddings.create({
+  const embeddingResponse = await getOpenAI().embeddings.create({
     model: 'text-embedding-3-small',
     input: texts,
   })

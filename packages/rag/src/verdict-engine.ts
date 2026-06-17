@@ -11,7 +11,13 @@ import type { VerdictValue, SourceCitation } from '@fountem/db'
 import type { RetrievedChunk } from './retriever'
 import { isMockMode, mockGenerateVerdict } from './mock'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+// Lazy-init so importing this module (e.g. during `next build` page-data
+// collection) doesn't require ANTHROPIC_API_KEY — only calling it does.
+let _anthropic: Anthropic | null = null
+function getAnthropic(): Anthropic {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  return _anthropic
+}
 
 export interface RagVerdictResult {
   verdict: VerdictValue
@@ -90,7 +96,7 @@ Assess this claim using ONLY the evidence passages provided above. Return your a
   "what_would_change_this": "<what new evidence or data would change this verdict>"
 }`
 
-  const response = await anthropic.messages.create({
+  const response = await getAnthropic().messages.create({
     model: 'claude-sonnet-4-5',
     max_tokens: 1024,
     system: SYSTEM_PROMPT,

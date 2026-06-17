@@ -7,7 +7,13 @@
 
 import OpenAI from 'openai'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+// Lazy-init so importing this module (e.g. during `next build` page-data
+// collection) doesn't require OPENAI_API_KEY — only calling it does.
+let _openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!_openai) _openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  return _openai
+}
 
 export interface RetrievedChunk {
   id: string
@@ -28,7 +34,7 @@ function rrfScore(bm25Rank: number | null, vectorRank: number | null): number {
 }
 
 export async function embedQuery(query: string): Promise<number[]> {
-  const response = await openai.embeddings.create({
+  const response = await getOpenAI().embeddings.create({
     model: 'text-embedding-3-small',
     input: query,
   })

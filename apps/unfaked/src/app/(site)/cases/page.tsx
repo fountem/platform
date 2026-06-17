@@ -5,14 +5,35 @@ import { Container, Eyebrow, StatusChip } from '@fountem/ui'
 
 export const revalidate = 300
 
+type CaseRow = {
+  id: string
+  verdict: string
+  confidence_pct: number | null
+  probable_generator: string | null
+  case_title: string | null
+  created_at: string
+  evasion_detected: string | null
+}
+
+async function loadCases(): Promise<CaseRow[]> {
+  // Guarded so `next build` (which prerenders this ISR page) doesn't fail when
+  // Supabase env is absent at build time; revalidation refills it at runtime.
+  try {
+    const db = createServiceClient()
+    const { data } = await db
+      .from('video_detections')
+      .select('id, verdict, confidence_pct, probable_generator, case_title, created_at, evasion_detected')
+      .eq('is_public', true)
+      .order('created_at', { ascending: false })
+      .limit(50)
+    return (data ?? []) as CaseRow[]
+  } catch {
+    return []
+  }
+}
+
 export default async function CasesPage() {
-  const db = createServiceClient()
-  const { data: cases } = await db
-    .from('video_detections')
-    .select('id, verdict, confidence_pct, probable_generator, case_title, created_at, evasion_detected')
-    .eq('is_public', true)
-    .order('created_at', { ascending: false })
-    .limit(50)
+  const cases = await loadCases()
 
   return (
     <Container>
