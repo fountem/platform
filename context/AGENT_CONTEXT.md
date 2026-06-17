@@ -23,7 +23,7 @@ Fountem is a UK political intelligence platform (`fountem.ai`). Unfaked is its c
 | All 3 web apps build clean | ✅ | `turbo run build` |
 | ESLint flat config, 0 warnings | ✅ | `eslint.config.mjs` |
 | CI: secret-scan + test + tsc + lint | ✅ | `.github/workflows/ci.yml` |
-| Netlify configs (per app) | ✅ Written | `apps/*/netlify.toml` |
+| Vercel deploy via GitHub Actions (4 apps) | ✅ Written | `.github/workflows/deploy.yml`, `bot-cron.yml` |
 | AWS resolver service + Terraform | ✅ Written | `services/resolver/` |
 | Shared `@fountem/core` (rate-limit, api-key, ssrf, monitoring, quota/Turnstile) | ✅ | `packages/core/` |
 | **Design system `@fountem/ui`** (tokens preset + components) | ✅ | `packages/ui/` |
@@ -35,8 +35,8 @@ Fountem is a UK political intelligence platform (`fountem.ai`). Unfaked is its c
 
 ### What still needs doing (deploy-time)
 1. **Provision AWS resolver** — `cd services/resolver/infra && terraform apply` (needs `vpc_id`, subnets, `resolver_api_key`). Then build/push the Docker image. See `services/resolver/README.md`. Outputs give `RESOLVER_URL` + `VALKEY_URL`.
-2. **Create Netlify sites** — one per app (unfaked, fountem, marketing, bot), base directory = the app folder. `netlify.toml` is already committed in each.
-3. **Wire live API keys + secrets** — set every var in `.env.example` in each Netlify site (and `RESOLVER_API_KEY`/`PORT` on the resolver). Generate `ADMIN_TOKEN`, `RESOLVER_API_KEY`, `CRON_SECRET` with `openssl rand -hex 32`.
+2. **Create Vercel projects** — one per app (unfaked, fountem, marketing, bot), each with **Root Directory** = the app folder (`apps/<name>`). No Git connection needed; deploys run from GitHub Actions via the Vercel CLI + token (`.github/workflows/deploy.yml`). Add GitHub secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID_{UNFAKED,FOUNTEM,MARKETING,BOT}`.
+3. **Wire live API keys + secrets** — set every var in `.env.example` in each Vercel project's Environment Variables (and `RESOLVER_API_KEY`/`PORT` on the resolver). Generate `ADMIN_TOKEN`, `RESOLVER_API_KEY`, `CRON_SECRET` with `openssl rand -hex 32`. For the bot cron also add GitHub secrets `BOT_PUBLIC_URL` + `CRON_SECRET` (`bot-cron.yml` pings `/api/cron` every 5 min — plan-agnostic; switch to a native Vercel Cron in `apps/bot/vercel.json` once on Pro).
 4. **Rotate the Supabase keys** that were committed on 2026-06-16 (treat as compromised).
 5. **Seed data** — `scripts/seed-reference.ts` (parties/issues) then `scripts/seed-evidence.ts` (corpus).
 6. **Run eval harness** — `scripts/eval-harness.ts` validates RAG against 10 test claims (target ≥8/10).
@@ -94,9 +94,11 @@ record in `video_detections`. Uncertain/high-stakes cases auto-escalate to a
 **human-review queue** (`shouldEscalateForReview`) surfaced at `/admin/review`
 (token-protected via `ADMIN_TOKEN`; API at `/api/admin/review`).
 
-**X bot (@unfaked):** `apps/bot` polls X mentions every 5 minutes via a **Netlify Scheduled
-Function** (`apps/bot/netlify/functions/poll.mts`) that calls `/api/cron`. Calls `/api/detect`
-with `UNFAKED_API_KEY` so it uses the B2B quota, not the per-IP limit.
+**X bot (@unfaked):** `apps/bot` polls X mentions every 5 minutes. The cron is a **GitHub
+Actions scheduled workflow** (`.github/workflows/bot-cron.yml`) that hits `/api/cron` with
+`Bearer $CRON_SECRET` (plan-agnostic; swap to a native Vercel Cron in `apps/bot/vercel.json`
+on Pro). Calls `/api/detect` with `UNFAKED_API_KEY` so it uses the B2B quota, not the per-IP
+limit. Bot logic lives in `@fountem/social` (shared core) + `apps/bot/src/lib/x-adapter.ts`.
 
 ### Fountem (`fountem.ai`)
 Political intelligence platform. Enter a claim, get an evidence-backed verdict with traceable source chain.
@@ -136,6 +138,7 @@ Political intelligence platform. Enter a claim, get an evidence-backed verdict w
   - `packages/detection` — provenance-first ensemble + resolver client + temporal + synthesiser
   - `packages/verdict` — Shared verdict card schema + serialisers (with disclaimer/confidence band)
   - `packages/core` — shared utils: `ratelimit` (Valkey/in-memory), `apikey`, `url-guard` (SSRF), `monitoring`
+  - `packages/social` — platform-agnostic bot core: `PlatformAdapter`/`IdempotencyStore` contracts, cursor+batch helpers, `httpDetector`, Supabase store, `processMentions` orchestrator. Per-platform adapters live in their app (e.g. `apps/bot/src/lib/x-adapter.ts`); IG/FB adapters slot in here.
   - `packages/ui` — Design system (Tailwind + brand tokens)
   - `services/resolver` — **standalone** AWS service (Express + yt-dlp/ffprobe/c2patool); own `package.json`, `Dockerfile`, Terraform in `infra/`. NOT an npm workspace — install/build it from inside its own dir.
 
@@ -215,7 +218,7 @@ Political intelligence platform. Enter a claim, get an evidence-backed verdict w
 2. **Claude Sonnet as primary LLM** — Better hallucination rate, Citations API, prompt caching economics.
 3. **Turborepo monorepo** — All apps share packages. Single CI pipeline.
 4. **RAG before fine-tuning** — Fine-tuning needs 10k+ labelled examples and £5k-50k+ GPU compute. Phase 1 RAG is correct.
-5. **Netlify, not Vercel** — Flatfile SSO gated the GitHub org. Each app is a Netlify site (base dir = app folder); `netlify.toml` committed per app. Bot cron = Netlify Scheduled Function.
+5. **Vercel via GitHub Actions** — Flatfile SSO gates Vercel's native Git integration, so we deploy with the Vercel CLI + token from `.github/workflows/deploy.yml` (matrix of 4 projects; preview on PR, prod on `main`). Each app is a separate Vercel project with Root Directory = its app folder. Bot cron = GitHub Actions scheduled workflow (`bot-cron.yml`). (Earlier plan was Netlify; switched to Vercel on 2026-06-17.)
 6. **AWS for the resolver** — heavy/native/untrusted media work (yt-dlp, ffprobe, c2patool) runs in ECS Fargate behind an internal ALB in private subnets, never in serverless. Terraform in `services/resolver/infra/`.
 7. **Valkey (ElastiCache) for rate limiting** — provisioned by the resolver Terraform; `@fountem/core` rate-limiter uses it via `VALKEY_URL`, falling back to in-memory.
 8. **Sensity + Hive both at launch** — two-vendor ensemble; we surface vendor disagreement rather than hiding it.
@@ -312,7 +315,7 @@ ADMIN_TOKEN=
 SENTRY_DSN=
 # X bot
 X_API_KEY= X_API_SECRET= X_ACCESS_TOKEN= X_ACCESS_TOKEN_SECRET= X_BEARER_TOKEN=
-X_BOT_USER_ID=  UNFAKED_API_URL=  UNFAKED_API_KEY=  BOT_SELF_URL=  CRON_SECRET=
+X_BOT_USER_ID=  UNFAKED_API_URL=  UNFAKED_API_KEY=  BOT_PUBLIC_URL=  CRON_SECRET=
 # App
 NEXT_PUBLIC_APP_URL=   # set per app (unfaked.ai / fountem.ai)
 ```
@@ -327,7 +330,7 @@ All application code, tests (91/91), type-checks (10/10) and lint are green loca
 work is provisioning/deploy, not coding:
 
 1. **Provision the resolver on AWS** — `cd services/resolver/infra && terraform init && terraform apply` with your `vpc_id`, `private_subnet_ids`, `alb_subnet_ids`, `resolver_api_key`. Then build & push the Docker image (steps in `services/resolver/README.md`). Capture `resolver_url` and `valkey_url` outputs.
-2. **Create the 4 Netlify sites** — base dir per app; set all env vars from `.env.example` (including `RESOLVER_URL`, `VALKEY_URL`, `ADMIN_TOKEN`). The bot needs `BOT_SELF_URL` + `CRON_SECRET` for the scheduled function.
+2. **Create the 4 Vercel projects** — Root Directory per app; set all env vars from `.env.example` in each project (including `RESOLVER_URL`, `VALKEY_URL`, `ADMIN_TOKEN`). Add GitHub secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID_{UNFAKED,FOUNTEM,MARKETING,BOT}`, plus `BOT_PUBLIC_URL` + `CRON_SECRET` for the bot cron workflow.
 3. **Rotate the leaked Supabase keys** and set the fresh ones.
 4. **Get/Set API keys** — Anthropic, OpenAI, Hive, Sensity.
 5. **Seed** — `scripts/seed-reference.ts` then `scripts/seed-evidence.ts`.
@@ -386,7 +389,7 @@ Everything below was implemented, type-checked, tested and linted this session:
 - **Legal research package (June 17, 2026):** full `/context/legal/` folder — UK/EU legal landscape (defamation, UK GDPR, OSA 2023, RPA 1983 s.106 + Elections Act 2022 digital imprints, EU AI Act Art.50, copyright/database rights, PECR, consumer/UCTA), defamation/liability memo with mandatory verdict-wording rules, DPIA + LIA, legal risk register, pre-launch compliance checklist, and a content-takedown/right-of-reply policy. Shipped user-facing legal pages for **both apps**: `/terms`, `/acceptable-use`, `/cookies`, `/disclaimer`, and expanded `/privacy`; wired a "Legal" column into both footers. Key live-date findings: EU AI Act Art.50 transparency applies **2 Aug 2026** (Art.50(4) text-disclosure touches Fountem's AI-generated verdicts; the deepfake-generation limb does **not** bite Unfaked, which detects); OSA illegal-content duties in force since 17 Mar 2025 (we are likely **not** an in-scope U2U service — documented); digital-imprint regime in force 1 Nov 2023 (non-partisan posture → organic imprints likely N/A; no paid political ads without counsel). All P0 blockers (DPAs/IDTA, ICO fee, key rotation, insurance, counsel sign-off) tracked in the risk register/checklist. **Not legal advice — needs counsel review before launch.** Type-check + lint green.
 - **Contract review via the `contract-review` (claude-legal) skill (June 17, 2026):** installed the open Agent Skill `evolsb/claude-legal-skill` to `~/.cursor/skills/contract-review` and ran its CUAD-based, position-aware methodology over both apps' **Terms of Service** + **Acceptable Use Policy**, re-basing its US defaults to England & Wales (CRA 2015 / UCTA 1977 / consumer regs). Report: `context/legal/contract-review-product-terms.md`. Findings led to hardening **both ToS** (`apps/*/src/app/(site)/terms/page.tsx`): added a CRA-fair **variation-notice + right-to-reject** clause, a **two-tier defined liability cap** (£100 free tier; B2B cap → API agreement), **user termination-for-convenience**, **suspension with notice/cure**, a **General/boilerplate** section (severability, entire agreement, exclusion of third-party rights, assignment, force majeure, notices), a **complaints/ICO** signpost, and company-identity placeholders. Type-check (both apps) + ESLint green.
 - **B2B API Agreement + review (June 17, 2026):** drafted the **Fountem API Services Agreement** (`context/legal/b2b-api-agreement.md`) — UK-law MSA template with an **Order Form (Schedule 1)**, **SLA (Schedule 2)** (99.9% uptime, tiered service credits as sole remedy, chronic-failure termination), and a **DPA stub (Schedule 3)** to complete with counsel. Covers licence/quotas/API keys, fees + capped price increases, term/renewal, termination-for-convenience + 30-day cure, suspension with notice, controller/processor split + subprocessors + 90-day data export, IP/feedback, "assessment-not-proof" risk allocation, mutual capped indemnities (narrow IP defence; **no** broad content/defamation indemnity), 12-month liability cap with non-excludable carve-outs, confidentiality, insurance, anti-bribery, and E&W governing law. Then ran the **contract-review skill's SaaS/MSA checklist** over it (`contract-review-b2b-api-agreement.md`): result 🟢 low–medium risk to us, on market standard; folded in the cheap fixes (order-of-precedence, Confidential Information definition, insurance §13A, compliance/anti-bribery §13B). **Blocking before first signature:** complete the DPA (Schedule 3) + UK IDTA (risk-register R-3/R-8) and bind insurance (R-15). Counsel sign-off required on §§12–13 + Schedule 3.
-- **Deploy (Phase 7):** switched Vercel→Netlify (`apps/*/netlify.toml`, removed `vercel.json`); bot cron as Netlify Scheduled Function (`apps/bot/netlify/functions/poll.mts`); expanded root `.env.example`; this context update.
+- **Deploy (Phase 7):** initially Vercel→Netlify, then **switched to Vercel-via-GitHub-Actions (June 17, 2026)** since Flatfile SSO gates Vercel's native Git integration. Added `.github/workflows/deploy.yml` (matrix of 4 Vercel projects using the Vercel CLI + token: preview on PR, prod on `main`) and `.github/workflows/bot-cron.yml` (plan-agnostic scheduled ping of `/api/cron`). Removed all `apps/*/netlify.toml` + `apps/bot/netlify/functions/poll.mts`; renamed `BOT_SELF_URL`→`BOT_PUBLIC_URL`; this context update.
 
 **Status:** code-complete and green. Outstanding items are infra provisioning + secrets + seeding (see "What To Do Next").
 

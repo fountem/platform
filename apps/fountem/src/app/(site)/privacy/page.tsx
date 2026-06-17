@@ -58,7 +58,7 @@ export default function PrivacyPage() {
           </Section>
           <Section title="Third parties and international transfers">
             We use Anthropic and OpenAI to generate embeddings and verdicts (we send only the claim and retrieved
-            evidence), Supabase (EU/London region) for storage and authentication, and Netlify for hosting. Some
+            evidence), Supabase (EU/London region) for storage and authentication, and Vercel for hosting. Some
             providers may process data outside the UK/EEA; where they do, we put appropriate safeguards (such as the UK
             International Data Transfer Agreement) in place.
           </Section>

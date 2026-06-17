@@ -1,0 +1,97 @@
+name: Deploy to Vercel
+
+# Deploys the monorepo's Next.js apps to Vercel via the Vercel CLI.
+# We can't use Vercel's native Git integration (Flatfile SSO gates the GitHub
+# org), so this workflow authenticates with a token instead.
+#
+# - Pull request  -> a Preview deploy per app (comment-able URL in the run log).
+# - Push to main   -> a Production deploy per app.
+#
+# Each app is a separate Vercel project whose "Root Directory" is set to its
+# app folder (apps/<name>) in the Vercel dashboard. Vercel detects the npm
+# workspace root and installs from there, then builds that single app.
+#
+# Required GitHub secrets (Settings -> Secrets and variables -> Actions):
+#   VERCEL_TOKEN                  - a Vercel access token scoped to the team
+#   VERCEL_ORG_ID                - the Vercel team/org id (same for all apps)
+#   VERCEL_PROJECT_ID_UNFAKED    - project id for apps/unfaked
+#   VERCEL_PROJECT_ID_FOUNTEM    - project id for apps/fountem
+#   VERCEL_PROJECT_ID_MARKETING  - project id for apps/marketing
+#   VERCEL_PROJECT_ID_BOT        - project id for apps/bot
+#
+# Runtime env vars (Supabase keys, ANTHROPIC_API_KEY, RESOLVER_URL, etc.) are
+# set in each Vercel *project's* Environment Variables, not here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: unfaked
+            project_id_secret: VERCEL_PROJECT_ID_UNFAKED
+          - app: fountem
+            project_id_secret: VERCEL_PROJECT_ID_FOUNTEM
+          - app: marketing
+            project_id_secret: VERCEL_PROJECT_ID_MARKETING
+          - app: bot
+            project_id_secret: VERCEL_PROJECT_ID_BOT
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_PROJECT_ID: ${{ secrets[matrix.project_id_secret] }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip if project id is not configured
+        id: guard
+        run: |
+          if [ -z "$VERCEL_PROJECT_ID" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_TOKEN" ]; then
+            echo "Missing Vercel secrets for ${{ matrix.app }}; skipping."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        if: steps.guard.outputs.configured == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Vercel CLI
+        if: steps.guard.outputs.configured == 'true'
+        run: npm install --global vercel@latest
+
+      - name: Set deploy environment
+        if: steps.guard.outputs.configured == 'true'
+        id: env
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "target=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=preview" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pull Vercel project settings
+        if: steps.guard.outputs.configured == 'true'
+        run: vercel pull --yes --environment=${{ steps.env.outputs.target }} --token="$VERCEL_TOKEN"
+
+      - name: Deploy (production)
+        if: steps.guard.outputs.configured == 'true' && steps.env.outputs.target == 'production'
+        run: vercel deploy --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy (preview)
+        if: steps.guard.outputs.configured == 'true' && steps.env.outputs.target == 'preview'
+        run: vercel deploy --token="$VERCEL_TOKEN"

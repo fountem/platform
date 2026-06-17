@@ -59,7 +59,7 @@ export default function PrivacyPage() {
           <Section title="Third parties and international transfers">
             To produce a verdict we send media to forensic providers (Hive, Sensity) and AI models (OpenAI). We send
             only what is needed for detection. We use Supabase (EU/London region) for storage and authentication, and
-            Netlify for hosting. Some providers may process data outside the UK/EEA; where they do, we put appropriate
+            Vercel for hosting. Some providers may process data outside the UK/EEA; where they do, we put appropriate
             safeguards (such as the UK International Data Transfer Agreement) in place.
           </Section>
           <Section title="Cookies">

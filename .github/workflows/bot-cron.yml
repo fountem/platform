@@ -1,0 +1,52 @@
+name: Bot cron (poll mentions)
+
+# Triggers the @unfaked bot's polling route every 5 minutes.
+#
+# Why this and not a native Vercel Cron? Vercel Cron only allows a daily
+# schedule on the Hobby plan; sub-daily schedules need Pro. This GitHub Actions
+# scheduler is plan-agnostic and mirrors the old Netlify Scheduled Function:
+# it simply hits /api/cron with the shared secret, and the route does the work.
+#
+# Once the Vercel account is on Pro, you can instead add a `crons` entry to
+# apps/bot/vercel.json (path "/api/cron", schedule "*/5 * * * *") and disable
+# this workflow — Vercel sends `Authorization: Bearer $CRON_SECRET` natively.
+#
+# Required GitHub secrets:
+#   BOT_PUBLIC_URL  - the bot's deployed base URL (e.g. https://bot.unfaked.ai)
+#   CRON_SECRET     - same value set in the bot's Vercel project env
+#
+# Note: GitHub's scheduler is best-effort and can be delayed or skipped under
+# load. The bot is idempotent (cursor + processed_mentions), so an occasional
+# missed or late run is safe — the backlog drains on the next run.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: bot-cron
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping bot /api/cron
+        env:
+          BOT_PUBLIC_URL: ${{ secrets.BOT_PUBLIC_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BOT_PUBLIC_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "BOT_PUBLIC_URL or CRON_SECRET not set; skipping."
+            exit 0
+          fi
+          base="${BOT_PUBLIC_URL%/}"
+          code=$(curl -sS -o /tmp/cron.out -w '%{http_code}' \
+            -H "authorization: Bearer ${CRON_SECRET}" \
+            "${base}/api/cron")
+          echo "cron -> HTTP ${code}"
+          cat /tmp/cron.out || true
+          if [ "$code" -ge 400 ]; then
+            exit 1
+          fi
