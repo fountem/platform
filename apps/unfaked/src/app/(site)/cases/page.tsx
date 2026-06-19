@@ -13,6 +13,7 @@ type CaseRow = {
   case_title: string | null
   created_at: string
   evasion_detected: string | null
+  slug: string | null
 }
 
 async function loadCases(): Promise<CaseRow[]> {
@@ -22,11 +23,17 @@ async function loadCases(): Promise<CaseRow[]> {
     const db = createServiceClient()
     const { data } = await db
       .from('video_detections')
-      .select('id, verdict, confidence_pct, probable_generator, case_title, created_at, evasion_detected')
+      .select(
+        'id, verdict, confidence_pct, probable_generator, case_title, created_at, evasion_detected, correction_packs(slug)',
+      )
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(50)
-    return (data ?? []) as CaseRow[]
+    return (data ?? []).map((c) => {
+      const packs = (c as unknown as { correction_packs?: { slug: string }[] | { slug: string } | null }).correction_packs
+      const pack = Array.isArray(packs) ? packs[0] : packs
+      return { ...(c as unknown as CaseRow), slug: pack?.slug ?? null }
+    })
   } catch {
     return []
   }
@@ -50,8 +57,9 @@ export default async function CasesPage() {
         <div className="mt-10 divide-y divide-forest-100 overflow-hidden rounded-card border border-forest-100 bg-white shadow-card">
           {cases?.map((c) => {
             const genLabel = c.probable_generator ? GENERATOR_LABELS[c.probable_generator] : null
-            return (
-              <div key={c.id} className="flex items-center gap-4 p-4 transition-colors hover:bg-parchment-200">
+            const rowClass = 'flex items-center gap-4 p-4 transition-colors hover:bg-parchment-200'
+            const inner = (
+              <>
                 <StatusChip verdict={c.verdict} surface="light" className="shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-ink">{c.case_title ?? 'Unnamed case'}</p>
@@ -63,6 +71,15 @@ export default async function CasesPage() {
                 <span className="shrink-0 font-mono text-xs text-ink-muted">
                   {new Date(c.created_at).toLocaleDateString('en-GB')}
                 </span>
+              </>
+            )
+            return c.slug ? (
+              <Link key={c.id} href={`/check/${c.slug}`} className={rowClass}>
+                {inner}
+              </Link>
+            ) : (
+              <div key={c.id} className={rowClass}>
+                {inner}
               </div>
             )
           })}

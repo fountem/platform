@@ -109,7 +109,12 @@ export function VerdictPanel({ card }: { card: VerdictCard }) {
         <div className="flex flex-col gap-2 sm:flex-row">
           <ShareButton text={card.share_text} />
           {card.correction_pack_url && (
-            <ButtonLink href={card.correction_pack_url} variant="primary" surface="dark" className="flex-1">
+            <ButtonLink
+              href={card.correction_pack_slug ? `/check/${card.correction_pack_slug}` : card.correction_pack_url}
+              variant="primary"
+              surface="dark"
+              className="flex-1"
+            >
               Full analysis
             </ButtonLink>
           )}

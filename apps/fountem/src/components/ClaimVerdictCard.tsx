@@ -72,7 +72,11 @@ export function ClaimVerdictCard({ card, claimText }: { card: VerdictCard; claim
       <div className="flex flex-col gap-2 sm:flex-row">
         <ShareButton text={card.share_text} />
         {card.correction_pack_url && (
-          <ButtonLink href={card.correction_pack_url} variant="primary" className="flex-1">
+          <ButtonLink
+            href={card.correction_pack_slug ? `/pack/${card.correction_pack_slug}` : card.correction_pack_url}
+            variant="primary"
+            className="flex-1"
+          >
             Correction pack
           </ButtonLink>
         )}

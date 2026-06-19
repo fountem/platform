@@ -72,7 +72,7 @@ async function RecentCases() {
     const db = createServiceClient()
     const { data } = await db
       .from('video_detections')
-      .select('id, verdict, confidence_pct, case_title, created_at')
+      .select('id, verdict, confidence_pct, case_title, created_at, correction_packs(slug)')
       .eq('is_public', true)
       .order('created_at', { ascending: false })
       .limit(4)
@@ -80,13 +80,29 @@ async function RecentCases() {
     if (!data || data.length === 0) return <EmptyCases />
     return (
       <div className="grid gap-3 sm:grid-cols-2">
-        {data.map((c) => (
-          <div key={c.id} className="flex items-center gap-3 rounded-card border border-forest-100 bg-white p-4 shadow-card">
-            <StatusChip verdict={c.verdict} surface="light" />
-            <span className="min-w-0 flex-1 truncate text-sm text-ink">{c.case_title ?? 'Unnamed case'}</span>
-            <span className="shrink-0 font-mono text-xs text-ink-muted">{c.confidence_pct}%</span>
-          </div>
-        ))}
+        {data.map((c) => {
+          const packs = (c as unknown as { correction_packs?: { slug: string }[] | { slug: string } | null })
+            .correction_packs
+          const slug = (Array.isArray(packs) ? packs[0] : packs)?.slug ?? null
+          const cardClass =
+            'flex items-center gap-3 rounded-card border border-forest-100 bg-white p-4 shadow-card transition-colors hover:bg-parchment-200'
+          const inner = (
+            <>
+              <StatusChip verdict={c.verdict} surface="light" />
+              <span className="min-w-0 flex-1 truncate text-sm text-ink">{c.case_title ?? 'Unnamed case'}</span>
+              <span className="shrink-0 font-mono text-xs text-ink-muted">{c.confidence_pct}%</span>
+            </>
+          )
+          return slug ? (
+            <Link key={c.id} href={`/check/${slug}`} className={cardClass}>
+              {inner}
+            </Link>
+          ) : (
+            <div key={c.id} className={cardClass}>
+              {inner}
+            </div>
+          )
+        })}
       </div>
     )
   } catch {
