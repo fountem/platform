@@ -17,6 +17,7 @@
     "@fountem/verdict": "*",
     "@supabase/ssr": "^0.5.2",
     "next": "15.3.9",
+    "posthog-js": "^1.391.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

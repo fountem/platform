@@ -9,17 +9,18 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@fountem/ui": "*",
     "next": "15.3.9",
+    "posthog-js": "^1.391.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@fountem/ui": "*"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
-    "typescript": "^5.7.2",
-    "tailwindcss": "^3.4.17",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.5.1"
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2"
   }
 }
