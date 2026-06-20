@@ -2,9 +2,11 @@ import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { createServiceClient } from '@fountem/db'
-import { serialiseDetectionVerdict } from '@fountem/verdict'
+import { serialiseDetectionVerdict, serialiseClaimVerdict } from '@fountem/verdict'
 import { Container, Eyebrow } from '@fountem/ui'
 import { VerdictPanel } from '../../../../components/VerdictPanel'
+
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://unfaked.ai'
 
 interface Props { params: Promise<{ slug: string }> }
 
@@ -23,10 +25,28 @@ async function getCard(slug: string) {
   try {
     const db = createServiceClient()
     const { data: pack } = await db.from('correction_packs').select('*').eq('slug', slug).maybeSingle()
-    if (!pack || !pack.detection_id) return null
-    const { data: detection } = await db.from('video_detections').select('*').eq('id', pack.detection_id).maybeSingle()
-    if (!detection) return null
-    return serialiseDetectionVerdict(detection, pack)
+    if (!pack) return null
+
+    // Video deepfake detection pack.
+    if (pack.detection_id) {
+      const { data: detection } = await db.from('video_detections').select('*').eq('id', pack.detection_id).maybeSingle()
+      if (!detection) return null
+      return serialiseDetectionVerdict(detection, pack)
+    }
+
+    // Text claim verification pack.
+    if (pack.verdict_id) {
+      const { data: verdict } = await db.from('verdicts').select('*').eq('id', pack.verdict_id).maybeSingle()
+      if (!verdict) return null
+      const { data: claim } = await db.from('claims').select('claim_text').eq('id', verdict.claim_id).maybeSingle()
+      return serialiseClaimVerdict(verdict, claim?.claim_text ?? '', pack, {
+        baseUrl: BASE_URL,
+        packPath: 'check',
+        attribution: 'Checked by Unfaked · powered by Fountem evidence',
+      })
+    }
+
+    return null
   } catch {
     return null
   }

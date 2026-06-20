@@ -1,6 +1,6 @@
 # Defamation & Liability Memo — Fountem / Unfaked
 
-**Last updated:** June 17, 2026 · **Status:** Draft research for counsel review · **Not legal advice.**
+**Last updated:** June 20, 2026 · **Status:** Draft research for counsel review · **Not legal advice.**
 **Audience:** founder + anyone editing verdict wording, methodology, or the public archive.
 
 This is the single most important legal document for the product. Read it before changing
@@ -169,12 +169,57 @@ cover before the archive or bot goes live publicly. Record the decision either w
 
 ---
 
+## 9a. Live fact-checking — the highest-risk surface
+
+Real-time fact-checking removes the human-review buffer that protects the s.4 public-interest
+defence, so it gets **stricter, structural** controls. The governing principle: **a live
+verdict is an assistive, provisional signal shown to one viewer — not a publication.**
+
+**Structural controls (enforced in `@fountem/live`, the live-gateway, and the live UI):**
+- **No publication.** Nothing produced in a live session is auto-posted to the archive, the
+  bot, or social. There is **no `share_text` and no correction-pack permalink** for a live
+  claim. This keeps us off the "publisher of a defamatory statement to the world" hook for the
+  real-time path.
+- **Provisional by construction.** Every live card is labelled *provisional*, carries a
+  confidence band, and shows the **source transcript chunk** it was derived from. Verdict
+  vocabulary is **softer** than the static product (lean toward "needs context" /
+  "unsupported by available evidence" over flat "false").
+- **Character-attack / opinion filter.** The claim extractor drops utterances that are
+  insults, predictions, or pure opinion rather than **check-worthy factual claims about public
+  matters** (`isCharacterAttack` guardrail). We do not surface a "verdict" on someone's
+  character.
+- **Attribute to "Speaker", not the named person,** unless diarisation/identification is
+  high-confidence. Mis-attribution is its own defamation risk (see DPIA D-10).
+- **Election-period mode.** When enabled, any verdict touching a **named candidate** is held
+  behind a human gate and not displayed live (RPA s.106 — criminal exposure, §6 above).
+- **Caps + retract.** Per-minute and per-session caps bound volume; the viewer can dismiss any
+  card; operators can kill a session instantly.
+- **Provenance tiering.** Live evidence labels each citation `primary` vs `web`; web-only
+  evidence reduces confidence and never yields a definitive verdict (DPIA D-12).
+
+**Wording on live cards** follows §3, but harder: never "[Person] lied", never certainty,
+always "based on available evidence, this appears…". A disclaimer that live checks are
+automated and provisional is shown on the console at all times.
+
+## 9b. Text claim verification
+
+The static text path reuses the Fountem RAG verdict discipline (§§2–5). Additional notes:
+- Open-web augmentation is **tiered** and visibly labelled; corpus sources are preferred and
+  web-only results cannot produce a top-confidence verdict.
+- A correction-pack permalink **is** minted for text verdicts (unlike live), so the **full
+  §3 wording rules, disclaimer and `share_text` hedging apply**, and high-stakes text verdicts
+  about named individuals route through the same human-review gate as Fountem.
+
 ## 9. Action checklist (defamation)
 
 - [ ] Counsel sign-off on standard verdict labels + disclaimer + `share_text` wording.
+- [ ] Counsel sign-off on **live provisional wording** + the "no-publication" position.
 - [ ] Gate archive publication + bot replies on human review for high-stakes cases.
+- [ ] Confirm live path mints **no** archive row / share text / correction-pack permalink.
+- [ ] Election-period mode wired for live (named-candidate human gate).
 - [ ] Wire a real `corrections@`/`legal@` inbox and an SLA.
 - [ ] Implement versioning + visible "corrected/updated" state on amended verdicts.
 - [ ] Election-period editorial protocol (s.106) documented.
-- [ ] Media-liability insurance bound (or risk accepted in writing).
+- [ ] Media-liability insurance bound (or risk accepted in writing) — incl. live.
+- [ ] Deepgram DPA + transfer assessment in place before live launch (DPIA D-11).
 - [ ] Keep the archive free of third-party user-posted content (avoid intermediary liability).

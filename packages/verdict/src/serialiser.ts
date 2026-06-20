@@ -117,19 +117,31 @@ export function serialiseDetectionVerdict(
   }
 }
 
+export interface ClaimSerialiseOptions {
+  /** Base URL for the correction-pack permalink. Defaults to Fountem. */
+  baseUrl?: string
+  /** Permalink path segment ('pack' for Fountem, 'check' for Unfaked). */
+  packPath?: string
+  /** Attribution line appended to share text. */
+  attribution?: string
+}
+
 export function serialiseClaimVerdict(
   verdict: Verdict,
   claimText: string,
-  pack: CorrectionPack | null
+  pack: CorrectionPack | null,
+  opts: ClaimSerialiseOptions = {}
 ): VerdictCard {
   const meta = VERDICT_META[verdict.verdict] ?? VERDICT_META.inconclusive
-  const FOUNTEM_URL = process.env.NEXT_PUBLIC_FOUNTEM_URL ?? 'https://fountem.ai'
+  const baseUrl = opts.baseUrl ?? process.env.NEXT_PUBLIC_FOUNTEM_URL ?? 'https://fountem.ai'
+  const packPath = opts.packPath ?? 'pack'
+  const attribution = opts.attribution ?? 'Verified by Fountem · powered by primary source evidence'
 
   const shareText = [
     `${meta.sharePrefix}: "${claimText.slice(0, 100)}${claimText.length > 100 ? '…' : ''}"`,
     `Confidence: ${verdict.confidence_pct}%`,
-    pack ? `Full evidence trail: ${FOUNTEM_URL}/pack/${pack.slug}` : null,
-    'Verified by Fountem · powered by primary source evidence',
+    pack ? `Full evidence trail: ${baseUrl}/${packPath}/${pack.slug}` : null,
+    attribution,
   ].filter(Boolean).join('\n')
 
   return {
@@ -155,7 +167,7 @@ export function serialiseClaimVerdict(
     review_status: verdict.reviewed_by ? 'human_reviewed' : 'automated',
     layer_breakdown: null,
     source_citations: verdict.source_citations ?? [],
-    correction_pack_url: pack ? `${FOUNTEM_URL}/pack/${pack.slug}` : null,
+    correction_pack_url: pack ? `${baseUrl}/${packPath}/${pack.slug}` : null,
     correction_pack_slug: pack?.slug ?? null,
     share_text: shareText,
     created_at: verdict.created_at,

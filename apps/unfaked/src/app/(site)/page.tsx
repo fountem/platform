@@ -1,13 +1,13 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Container, Eyebrow, StatusChip, ShieldMark } from '@fountem/ui'
-import { DetectForm } from '../../components/DetectForm'
+import { ModeSwitcher } from '../../components/ModeSwitcher'
 import { getUser } from '../../lib/supabase/server'
 
 export const metadata: Metadata = {
-  title: 'Unfaked — Detect AI-Generated Political Videos',
+  title: 'Unfaked — Detect Deepfakes, Verify Claims, Fact-Check Live',
   description:
-    '1 in 3 UK voters saw political deepfakes before the 2026 elections. Paste a video URL for an evidence-backed verdict that shows its working.',
+    'Is this real? Paste a video to detect deepfakes, a claim to fact-check it against the evidence, or a live stream to verify a debate as it happens — with the working shown.',
 }
 
 export default async function HomePage() {
@@ -17,17 +17,17 @@ export default async function HomePage() {
     <>
       <section className="relative overflow-hidden">
         <Container>
-          <div className="mx-auto max-w-2xl pb-12 pt-16 text-center sm:pt-24">
+          <div className="mx-auto max-w-2xl pb-10 pt-16 text-center sm:pt-24">
             <Eyebrow className="justify-center">Made in the UK · for the public good</Eyebrow>
-            <h1 className="mt-5 font-serif text-5xl leading-[1.05] text-forest-900 sm:text-6xl">Is this video real?</h1>
+            <h1 className="mt-5 font-serif text-5xl leading-[1.05] text-forest-900 sm:text-6xl">Is this real?</h1>
             <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-ink-secondary">
-              1 in 3 UK voters encountered AI-generated political content before the 2026 elections. Paste any video URL for a
-              forensic verdict — with the evidence behind it.
+              Detect AI-generated video, fact-check a claim against the evidence, or verify a live debate as it happens —
+              every verdict shows its working.
             </p>
           </div>
 
           <div className="mx-auto max-w-2xl pb-8">
-            <DetectForm signedIn={Boolean(user)} />
+            <ModeSwitcher signedIn={Boolean(user)} />
           </div>
 
           <div className="mx-auto grid max-w-3xl gap-8 border-t border-forest-100 py-12 sm:grid-cols-3">
@@ -61,9 +61,9 @@ export default async function HomePage() {
 }
 
 const FEATURES = [
-  { icon: ProvenanceIcon, title: 'Provenance first', body: 'We trace where a video came from before judging how it looks — content credentials and AI watermarks.' },
-  { icon: EnsembleIcon, title: 'Forensic ensemble', body: 'Two independent detectors plus temporal and cross-modal analysis — and we surface their disagreement.' },
-  { icon: ArchiveIcon, title: 'For the public record', body: 'Every public verdict is timestamped in an open archive for journalists, researchers and regulators.' },
+  { icon: ProvenanceIcon, title: 'Deepfake detection', body: 'Provenance-first forensics — content credentials, AI watermarks, and two independent detectors, with disagreement surfaced.' },
+  { icon: EnsembleIcon, title: 'Claim verification', body: 'Paste a statement and we check it against trusted primary sources and live web evidence — every verdict cites its sources.' },
+  { icon: ArchiveIcon, title: 'Live fact-checking', body: 'Point Unfaked at a live debate or interview and watch check-worthy claims verify in real time as they’re said.' },
 ]
 
 async function RecentCases() {

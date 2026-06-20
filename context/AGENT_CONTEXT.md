@@ -1,5 +1,5 @@
 # Fountem / Unfaked — Agent Context Package
-**Last updated:** June 17, 2026 · **Author:** Elroy (elroy@flatfile.io)
+**Last updated:** June 20, 2026 · **Author:** Elroy (elroy@flatfile.io)
 
 ## Read This First
 
@@ -68,7 +68,35 @@ Migration `011_auth_quotas.sql` adds `profiles` (+ signup trigger), `user_usage`
 ## Products
 
 ### Unfaked (`unfaked.ai`)
-Free public deepfake detection for political video/images. Paste a URL, get a verdict in <60 seconds.
+Free public **verification** for UK political discourse — three surfaces sharing one brand and
+evidence base: **(1) deepfake video detection**, **(2) text claim verification**, and **(3)
+live fact-checking** of broadcasts. A home-page `ModeSwitcher` toggles video vs text; `/verify`
+is the dedicated claim page and `/live` is the live console.
+
+**Text claim verification** (`/api/verify-text`, `/verify`): reuses Fountem's `@fountem/rag`
+pipeline but with an **open-web augmentation layer** (`@fountem/rag/evidence` +
+`web-search.ts`, Tavily adapter with mock fallback). Evidence carries a **source tier**
+(`primary` = curated UK corpus, `web` = open web); corpus is preferred and web-only evidence
+cannot yield a top-confidence verdict. Claims are deduped/cached by `claim_hash` *before*
+quota is charged. Verdicts persist (`claims`/`verdicts`/`correction_packs`) and mint a `/check/
+[slug]` correction-pack permalink, serialised with Unfaked branding via
+`serialiseClaimVerdict(..., { baseUrl, packPath:'check', attribution })`. Citation tier badges
+render in `VerdictPanel`.
+
+**Live fact-checking** (`/live`, `@fountem/live`, `services/live-gateway`): pull a live stream
+URL → a **standalone AWS ECS gateway** (`services/live-gateway`, NOT a workspace) pulls audio
+via yt-dlp→ffmpeg, streams it to **Deepgram Nova** for ASR + diarisation, extracts
+**check-worthy** claims with GPT-4o-mini (dropping character-attacks/opinion via
+`isCharacterAttack`), and delegates verification back to the app's internal
+`/api/live/verify-claim` (which reuses `@fountem/rag` evidence + verdict). Results stream to the
+browser over **Supabase Realtime**. Sessions are gated by an **HMAC-signed live token**
+(`@fountem/core/live-token`), an `unfaked_live` daily quota, a global budget cap, and
+per-session hard caps (`LIVE_SESSION_CAPS`: max minutes/claims/claims-per-minute). Live
+verdicts are **provisional, never published/shared/archived** — see the live sections in
+`context/legal/{defamation-liability-memo,dpia,legal-risk-register}.md`. Full design:
+`context/technical/unfaked-text-and-live-verification-plan.md`.
+
+**Deepfake detection (original surface).** Paste a URL, get a verdict in <60 seconds.
 
 **Architecture:** The web app (`apps/unfaked`) never touches native binaries. A separate
 network-isolated **AWS resolver service** (`services/resolver/`) does yt-dlp download,
@@ -134,13 +162,15 @@ Political intelligence platform. Enter a claim, get an evidence-backed verdict w
   - `apps/marketing` — Landing page
   - `apps/bot` — X bot (Netlify Scheduled Function → `/api/cron`)
   - `packages/db` — Supabase client + types (typed `Database`, RPCs)
-  - `packages/rag` — RAG pipeline (chunker, retriever, decompose, verdict engine, eval)
+  - `packages/rag` — RAG pipeline (chunker, retriever, decompose, verdict engine, eval) **+ open-web evidence layer (`web-search.ts` Tavily adapter, `evidence.ts` orchestrator, source tiers)**
+  - `packages/live` — **live fact-checking core**: types, Deepgram ASR adapter, claim extractor (+ character-attack guard), verify-worker (reuses `@fountem/rag`), session manager (dedup/backpressure/caps), mock mode
   - `packages/detection` — provenance-first ensemble + resolver client + temporal + synthesiser
   - `packages/verdict` — Shared verdict card schema + serialisers (with disclaimer/confidence band)
   - `packages/core` — shared utils: `ratelimit` (Valkey/in-memory), `apikey`, `url-guard` (SSRF), `monitoring`
   - `packages/social` — platform-agnostic bot core: `PlatformAdapter`/`IdempotencyStore` contracts, cursor+batch helpers, `httpDetector`, Supabase store, `processMentions` orchestrator. Per-platform adapters live in their app (e.g. `apps/bot/src/lib/x-adapter.ts`); IG/FB adapters slot in here.
   - `packages/ui` — Design system (Tailwind + brand tokens)
   - `services/resolver` — **standalone** AWS service (Express + yt-dlp/ffprobe/c2patool); own `package.json`, `Dockerfile`, Terraform in `infra/`. NOT an npm workspace — install/build it from inside its own dir.
+  - `services/live-gateway` — **standalone** AWS ECS service (Express + WebSocket) for **live fact-checking**: yt-dlp→ffmpeg audio pull → Deepgram streaming ASR → claim extraction → delegates verification to the app's `/api/live/verify-claim`. Vendors `verifyLiveToken` + claim-extraction so it needs no workspace link. Own `package.json`, `Dockerfile`, Terraform (`infra/`: ECR, ECS Fargate, **internet-facing ALB with sticky WebSocket sessions**, Secrets Manager). NOT an npm workspace — `npm install --no-workspaces` + build from its own dir.
 
 ### Supabase
 - **Project URL:** in secret store as `NEXT_PUBLIC_SUPABASE_URL` (never commit)
@@ -161,7 +191,10 @@ Political intelligence platform. Enter a claim, get an evidence-backed verdict w
 `005_parties_issues` → `006_correction_packs_api` → `007_rls` →
 `008_detection_enhancements` (confidence band, vendor_disagreement, signal_breakdown, review_status/reviewed_by/at/notes) →
 `009_api_key_usage` (atomic `increment_api_key_usage` RPC for monthly quota) →
-`010_rls_complete` (RLS on reference tables; public read, service-role write).
+`010_rls_complete` (RLS on reference tables; public read, service-role write) →
+`011_auth_quotas` → `012_bot_state` →
+`013_claims_text_extensions` (`claims.input_kind`/`claim_hash`/`user_id` + unique hash index; broadened `claim_type` + `evidence_sources.source_type` for general/web) →
+`014_live_sessions` (`live_sessions`/`live_transcript_chunks`/`live_claims` + owner RLS + Realtime publication + `unfaked_live` usage product + `increment_live_claim_count` RPC).
 
 > ⚠️ Any new migration created locally must be applied to the live DB and logged in `applied.md`.
 
@@ -269,7 +302,11 @@ context/
 │   ├── tech-architecture-implementation-guide.md
 │   ├── tech-stack-blueprint.md
 │   ├── ai-video-detection-spec.md
-│   └── ai-video-detection-agent-prompt.md
+│   ├── ai-video-detection-agent-prompt.md
+│   ├── detection-pipeline-detail.md
+│   ├── rag-pipeline-detail.md
+│   ├── master-architecture-spec-summary.md
+│   └── unfaked-text-and-live-verification-plan.md   ← text + live design (this feature)
 ├── legal/
 │   ├── README.md                       ← legal package index + posture
 │   ├── uk-eu-legal-landscape.md        ← every applicable law + what it requires
@@ -392,6 +429,59 @@ Everything below was implemented, type-checked, tested and linted this session:
 - **Deploy (Phase 7):** initially Vercel→Netlify, then **switched to Vercel-via-GitHub-Actions (June 17, 2026)** since Flatfile SSO gates Vercel's native Git integration. Added `.github/workflows/deploy.yml` (matrix of 4 Vercel projects using the Vercel CLI + token: preview on PR, prod on `main`) and `.github/workflows/bot-cron.yml` (plan-agnostic scheduled ping of `/api/cron`). Removed all `apps/*/netlify.toml` + `apps/bot/netlify/functions/poll.mts`; renamed `BOT_SELF_URL`→`BOT_PUBLIC_URL`; this context update.
 
 **Status:** code-complete and green. Outstanding items are infra provisioning + secrets + seeding (see "What To Do Next").
+
+---
+
+## Session changelog — June 20, 2026 (Unfaked text + live verification)
+
+Extended Unfaked from video-only to **three verification surfaces**: deepfake video, **text
+claims**, and **live broadcasts**. Plan: `context/technical/unfaked-text-and-live-verification-plan.md`.
+Linear: project + epics + issues broken down. All new tests green; **full suite 169/169 across
+32 suites**; turbo type-check green across all workspaces; `services/live-gateway` type-checks
+standalone. (Pre-existing `apps/fountem` lint failure is unrelated — `eslint-config-next` is not
+installed, so `next lint` errors on fountem's `// eslint-disable @next/next/no-img-element`
+comments; tracked separately, not introduced by this work.)
+
+**Text verification**
+- `@fountem/rag`: new **open-web evidence layer** — `web-search.ts` (Tavily adapter + domain
+  credibility scoring + mock), `evidence.ts` (`gatherEvidence` merges corpus + web, applies
+  `source_tier`, RRF sort). Tests: `__tests__/{web-search,evidence}.test.ts`.
+- `@fountem/db` types: `ClaimInputKind`, `SourceTier`, broadened `SourceType`; `Claim` gains
+  `input_kind`/`claim_hash`/`user_id`; `SourceCitation.source_tier`; `UserUsage.product` adds
+  `unfaked_live`. Migration `013_claims_text_extensions.sql`.
+- `@fountem/verdict`: `serialiseClaimVerdict` takes `ClaimSerialiseOptions` (`baseUrl`,
+  `packPath`, `attribution`) so Unfaked brands `/check/[slug]` packs.
+- App: `/api/verify-text` route (auth/IP-limit/`claim_hash` cache **before** quota/classify/
+  gather/verdict/persist/serialise, mock-aware); UI `ModeSwitcher` + `TextClaimForm`, `/verify`
+  page, `VerdictPanel` claim branch with tier badges, `/check/[slug]` handles claim packs.
+
+**Live fact-checking**
+- `@fountem/live` package: `types`, `asr` (Deepgram + mock), `claim-extractor` (GPT-4o-mini +
+  `isCharacterAttack` guard), `verify-worker` (reuses `@fountem/rag`, maps 8-value verdict →
+  softer live vocab), `session` (dedup + per-minute backpressure + hard caps), `mock`. Tests for
+  all. Registered in root jest `moduleNameMapper` + app `tsconfig`/`transpilePackages`.
+- `@fountem/core`: `live-token.ts` (HMAC-SHA256 signed short-lived session tokens);
+  `quota.ts` adds `unfaked_live` limits/caps + `LIVE_SESSION_CAPS`.
+- Migration `014_live_sessions.sql`: `live_sessions`/`live_transcript_chunks`/`live_claims` +
+  owner RLS + **Supabase Realtime** publication + `increment_live_claim_count` RPC.
+- App: `/api/live/{start,stop,verify-claim}` routes; `useLiveSession` hook (Realtime + mock
+  sim); `components/live/{LiveConsole,LiveTranscript,LiveClaimCard}`; `/live` page.
+- `services/live-gateway/`: standalone ECS service (config, vendored token, audio pull,
+  Deepgram client, claim extract, store, pipeline, Express+WS index), Dockerfile, `.env.example`,
+  README, Terraform (`infra/main.tf` + `variables.tf` + `outputs.tf`): ECR, ECS Fargate,
+  internet-facing ALB with sticky WebSocket sessions, Secrets Manager, IAM, CloudWatch.
+
+**Content + legal**
+- Marketing home (`apps/marketing`) + Unfaked `(site)/layout` nav/footer now surface text +
+  live. Legal updates for the live/text surfaces in `legal-risk-register.md` (R-18…R-22),
+  `dpia.md` (live/text processing tables, Deepgram/Tavily processors, risks D-9…D-12 + measures),
+  and `defamation-liability-memo.md` (§9a live = provisional/no-publication, §9b text).
+
+**New deploy-time items (live):** provision `services/live-gateway` (Terraform + image push;
+needs `certificate_arn`, public subnets); set `DEEPGRAM_API_KEY`, `TAVILY_API_KEY`,
+`LIVE_SESSION_SIGNING_KEY`, `LIVE_INTERNAL_KEY`, `NEXT_PUBLIC_LIVE_GATEWAY_URL`; sign the
+**Deepgram DPA + transfer assessment** (DPIA D-11, blocks live launch); enable Realtime on the
+live tables.
 
 ---
 

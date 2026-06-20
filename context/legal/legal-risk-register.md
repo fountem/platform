@@ -1,6 +1,6 @@
 # Legal Risk Register — Fountem / Unfaked
 
-**Last updated:** June 17, 2026 · **Status:** Living document · **Not legal advice.**
+**Last updated:** June 20, 2026 · **Status:** Living document · **Not legal advice.**
 
 Scoring: **Likelihood** L/M/H · **Impact** L/M/H · **Priority** = combined.
 Bring this page to counsel and to grant funders/investors. Review monthly and on any feature change.
@@ -24,8 +24,15 @@ Bring this page to counsel and to grant funders/investors. Review monthly and on
 | R-15 | **No media/PI/cyber insurance** when archive/bot go live | M | H | **P1** | Bind media-liability + PI + cyber cover, or written risk-acceptance | Founder | 🔴 |
 | R-16 | **Accessibility (Equality Act / WCAG 2.2 AA)** gaps | M | L | **P2** | Accessibility audit pre-launch; fix criticals | Founder | 🟡 |
 | R-17 | **Leaked Supabase keys** (committed 2026-06-16) | H | H | **P0** | Rotate keys (already flagged in AGENT_CONTEXT); confirm done | Founder | 🟡 |
+| R-18 | **Live real-time defamation** — a provisional verdict about a named, living person is shown during a broadcast before any human review | M | H | **P0** | Verdicts shown as **provisional** with confidence band + disclaimer; **no auto-publish, no auto-share, no archive** of live claims; character-attack/opinion filter drops non-checkable attacks; election-period mode forces human gate before any named-candidate verdict displays; one-tap retract; rate caps | Founder | 🟡 |
+| R-19 | **Mis-transcription / speaker misattribution** — ASR error attributes a claim to the wrong person | M | M | **P1** | Diarisation confidence surfaced; attribute to neutral "Speaker" label unless high-confidence ID; show source transcript chunk next to every claim; provisional framing; user can dismiss | Founder | 🟡 |
+| R-20 | **Live open-web evidence is lower-trust** than the curated corpus (web search can surface unreliable sources) | M | M | **P1** | Source **tiering** (`primary` vs `web`) shown on every citation; corpus preferred, web used only to augment thin coverage; domain-credibility scoring; confidence reduced when only web evidence exists; never a definitive verdict on web-only | Founder | 🟡 |
+| R-21 | **Real-time processing of identifiable speech** (live ASR of named individuals) — special-category/biometric & transfer concerns | M | M | **P1** | Transient processing only; **no voiceprint/biometric template** created or stored; audio not retained, transcript retained per policy with session TTL; DPIA live-addendum; Deepgram DPA + transfer assessment | Founder | 🔴 |
+| R-22 | **Out-of-corpus / private-individual text claims** produce shareable but weakly-grounded verdicts | M | M | **P2** | `unverifiable`/`inconclusive` bands; correction pack only minted above confidence threshold; restrict to public-interest political claims; honest-confidence statement on every card | Founder | 🟡 |
 
 **P0 = must be resolved or formally risk-accepted before public launch.**
+
+**Live fact-checking note:** Live verdicts are *assistive, provisional signals* for the viewer — never automated publications. Nothing produced in a live session is auto-posted, auto-shared, or added to the public archive. See `dpia.md` (live addendum) and `defamation-liability-memo.md`.
 
 ## Top 6 to clear before launch
 1. R-3 transfers/DPAs · 2. R-4 ICO registration · 3. R-5 legal pages live + reviewed ·
