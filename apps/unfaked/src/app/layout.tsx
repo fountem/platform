@@ -14,7 +14,6 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_GB',
     siteName: 'Unfaked',
-    images: [{ url: '/og-default.png', width: 1200, height: 630 }],
   },
   twitter: { card: 'summary_large_image', site: '@unfaked' },
 }

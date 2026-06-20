@@ -10,6 +10,9 @@ export const metadata: Metadata = {
   title: 'Fountem — Evidence-backed political intelligence for the UK',
   description:
     '1 in 3 UK voters saw political deepfakes before the 2026 elections. Unfaked detects them. Fountem explains them. Verifiable truth, in public.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_MARKETING_URL ?? 'https://fountem.com'),
+  openGraph: { type: 'website', locale: 'en_GB', siteName: 'Fountem' },
+  twitter: { card: 'summary_large_image', site: '@fountem_ai' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -11,6 +11,7 @@ export const metadata: Metadata = {
   description: 'Evidence-backed fact-checking for UK politics. Every verdict cites its primary source.',
   metadataBase: new URL(process.env.NEXT_PUBLIC_FOUNTEM_URL ?? 'https://fountem.ai'),
   openGraph: { type: 'website', locale: 'en_GB', siteName: 'Fountem' },
+  twitter: { card: 'summary_large_image', site: '@fountem_ai' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
