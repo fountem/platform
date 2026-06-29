@@ -29,6 +29,12 @@
       ],
       "@fountem/ui": [
         "../../packages/ui/src/index.ts"
+      ],
+      "@fountem/rag": [
+        "../../packages/rag/src/index.ts"
+      ],
+      "@fountem/live": [
+        "../../packages/live/src/index.ts"
       ]
     },
     "isolatedModules": true

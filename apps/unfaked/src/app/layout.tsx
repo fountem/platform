@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, Lora, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
+import { Analytics } from '../components/Analytics'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 const lora = Lora({ subsets: ['latin'], variable: '--font-lora', display: 'swap' })
@@ -14,7 +15,6 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_GB',
     siteName: 'Unfaked',
-    images: [{ url: '/og-default.png', width: 1200, height: 630 }],
   },
   twitter: { card: 'summary_large_image', site: '@unfaked' },
 }
@@ -22,7 +22,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${lora.variable} ${mono.variable}`}>
-      <body className="min-h-screen bg-parchment font-sans text-ink antialiased">{children}</body>
+      <body className="min-h-screen bg-parchment font-sans text-ink antialiased">
+        {children}
+        <Analytics />
+      </body>
     </html>
   )
 }

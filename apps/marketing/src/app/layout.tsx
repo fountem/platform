@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { Inter, Lora, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
+import { Analytics } from '../components/Analytics'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 const lora = Lora({ subsets: ['latin'], variable: '--font-lora', display: 'swap' })
@@ -10,12 +11,18 @@ export const metadata: Metadata = {
   title: 'Fountem — Evidence-backed political intelligence for the UK',
   description:
     '1 in 3 UK voters saw political deepfakes before the 2026 elections. Unfaked detects them. Fountem explains them. Verifiable truth, in public.',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_MARKETING_URL ?? 'https://fountem.com'),
+  openGraph: { type: 'website', locale: 'en_GB', siteName: 'Fountem' },
+  twitter: { card: 'summary_large_image', site: '@fountem_ai' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${lora.variable} ${mono.variable}`}>
-      <body className="min-h-screen bg-parchment font-sans text-ink antialiased">{children}</body>
+      <body className="min-h-screen bg-parchment font-sans text-ink antialiased">
+        {children}
+        <Analytics />
+      </body>
     </html>
   )
 }

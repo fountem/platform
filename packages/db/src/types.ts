@@ -1,7 +1,14 @@
 export type VerdictValue = 'true' | 'mostly_true' | 'half_true' | 'mostly_false' | 'false' | 'misleading' | 'unverifiable' | 'inconclusive'
-export type ClaimType = 'statistic' | 'policy' | 'historical' | 'prediction' | 'deepfake_video' | 'deepfake_audio' | 'ai_generated_image'
+export type ClaimType = 'statistic' | 'policy' | 'historical' | 'prediction' | 'deepfake_video' | 'deepfake_audio' | 'ai_generated_image' | 'general'
 export type ClaimStatus = 'pending' | 'processing' | 'complete' | 'failed' | 'archived'
-export type SourceType = 'ons' | 'ifs' | 'hansard' | 'full_fact' | 'resolution_foundation' | 'nao' | 'bbc_reality_check' | 'academic' | 'government'
+/** How a claim entered the system: typed text, extracted from a video, or from a live session. */
+export type ClaimInputKind = 'text' | 'video' | 'live'
+export type SourceType =
+  | 'ons' | 'ifs' | 'hansard' | 'full_fact' | 'resolution_foundation' | 'nao' | 'bbc_reality_check' | 'academic' | 'government'
+  // General / open-web evidence categories (used by the live web-evidence layer).
+  | 'web' | 'news' | 'fact_checker' | 'official' | 'reference'
+/** Evidence provenance tier — primary trusted corpus vs open-web augmentation. */
+export type SourceTier = 'primary' | 'web'
 export type DetectionVerdict = 'ai_generated' | 'likely_ai_generated' | 'inconclusive' | 'likely_real' | 'real'
 export type EvasionStatus = 'yes' | 'no' | 'suspected'
 export type ApiTier = 'free' | 'newsroom' | 'enterprise'
@@ -32,6 +39,12 @@ export type Claim = {
   id: string
   claim_text: string
   claim_type: ClaimType
+  /** Origin of the claim (typed text, video extraction, live session). */
+  input_kind: ClaimInputKind | null
+  /** SHA-256 of the normalised claim text — used for dedup/caching. */
+  claim_hash: string | null
+  /** The signed-in user who submitted it (null for API/public). */
+  user_id: string | null
   speaker: string | null
   party: string | null
   spoken_at: string | null
@@ -70,6 +83,8 @@ export interface SourceCitation {
   publisher: string
   published_at: string
   excerpt: string
+  /** Trust tier of the cited source. Absent on legacy rows (treat as 'primary'). */
+  source_tier?: SourceTier
 }
 
 export type ReviewStatus = 'automated' | 'pending_review' | 'human_reviewed'
@@ -232,8 +247,69 @@ export type Profile = {
 export type UserUsage = {
   user_id: string
   usage_date: string
-  product: 'unfaked' | 'fountem'
+  product: 'unfaked' | 'fountem' | 'unfaked_live'
   count: number
+}
+
+// ── Live fact-checking ────────────────────────────────────────────────────────
+
+export type LiveSourceKind = 'live_url' | 'mic' | 'tab' | 'upload'
+export type LiveSessionStatus = 'active' | 'ended' | 'error'
+
+/**
+ * Verdict vocabulary for LIVE claims — deliberately softer than the 8-value
+ * claim scale. Live output is provisional and unreviewed, so we avoid blunt
+ * "FALSE/TRUE" judgements (see context/legal/defamation-liability-memo.md).
+ */
+export type LiveClaimStatus =
+  | 'pending'        // extracted, awaiting verification
+  | 'checking'       // verification in progress
+  | 'supported'      // evidence supports the claim
+  | 'disputed'       // evidence contradicts the claim
+  | 'needs_context'  // technically defensible but misleading without context
+  | 'unverifiable'   // insufficient evidence right now
+  | 'error'          // verification failed
+
+export type LiveSession = {
+  id: string
+  user_id: string | null
+  source_kind: LiveSourceKind
+  source_ref: string | null
+  source_title: string | null
+  status: LiveSessionStatus
+  /** Number of claims surfaced (denormalised counter for caps/UX). */
+  claim_count: number
+  election_mode: boolean
+  started_at: string
+  ended_at: string | null
+}
+
+export type LiveTranscriptChunk = {
+  id: string
+  session_id: string
+  speaker_label: string | null
+  text: string
+  ts_start_ms: number | null
+  ts_end_ms: number | null
+  processed_for_claims: boolean
+  created_at: string
+}
+
+export type LiveClaim = {
+  id: string
+  session_id: string
+  transcript_excerpt: string | null
+  claim_text: string
+  speaker_label: string | null
+  status: LiveClaimStatus
+  verdict_summary: string | null
+  correction: string | null
+  what_would_change_this: string | null
+  confidence_pct: number | null
+  source_citations: SourceCitation[]
+  claim_hash: string | null
+  verified_at: string | null
+  created_at: string
 }
 
 export type ServiceBudget = {
@@ -276,6 +352,9 @@ export interface Database {
       service_budget: { Row: ServiceBudget; Insert: Partial<ServiceBudget>; Update: Partial<ServiceBudget>; Relationships: [] }
       bot_cursor: { Row: BotCursor; Insert: Partial<BotCursor>; Update: Partial<BotCursor>; Relationships: [] }
       processed_mentions: { Row: ProcessedMention; Insert: Partial<ProcessedMention>; Update: Partial<ProcessedMention>; Relationships: [] }
+      live_sessions: { Row: LiveSession; Insert: Partial<LiveSession>; Update: Partial<LiveSession>; Relationships: [] }
+      live_transcript_chunks: { Row: LiveTranscriptChunk; Insert: Partial<LiveTranscriptChunk>; Update: Partial<LiveTranscriptChunk>; Relationships: [] }
+      live_claims: { Row: LiveClaim; Insert: Partial<LiveClaim>; Update: Partial<LiveClaim>; Relationships: [] }
     }
     Views: { [_ in never]: never }
     CompositeTypes: { [_ in never]: never }

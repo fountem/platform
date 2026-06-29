@@ -29,8 +29,9 @@ export default function MarketingHome() {
               The truth has never needed more defending.
             </h1>
             <p className="mx-auto mt-6 max-w-2xl text-xl leading-relaxed text-ink-secondary">
-              Fountem is the UK&rsquo;s evidence-backed political intelligence platform. Unfaked is its public deepfake detection
-              tool. Together, they give voters something they&rsquo;ve never had: verifiable truth.
+              Fountem is the UK&rsquo;s evidence-backed political intelligence platform. Unfaked is its public verification
+              tool &mdash; deepfakes, written claims, and live broadcasts. Together, they give voters something they&rsquo;ve
+              never had: verifiable truth, in real time.
             </p>
             <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
               <ButtonLink href="https://unfaked.ai" variant="primary" className="px-7 py-4 text-base">Detect a deepfake →</ButtonLink>
@@ -62,14 +63,14 @@ export default function MarketingHome() {
             <div className="mt-12 grid gap-6 sm:grid-cols-2">
               <ProductCard
                 name="Unfaked"
-                tagline="AI video detection · unfaked.ai"
+                tagline="Video, text & live fact-checking · unfaked.ai"
                 href="https://unfaked.ai"
                 cta="Try Unfaked →"
                 features={[
-                  'Paste any video URL — get a verdict in seconds',
+                  'Paste any video URL — get a deepfake verdict in seconds',
+                  'Check any written claim against trusted UK sources',
+                  'Live fact-check debates and interviews as they air',
                   'Provenance-first ensemble (C2PA + Hive + Sensity)',
-                  'Identifies the probable AI generator',
-                  'Detects evasion attempts',
                   'Public UK political deepfake archive',
                   'X bot: @unfaked for instant checks',
                 ]}

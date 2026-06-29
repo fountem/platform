@@ -94,6 +94,35 @@ export function VerdictPanel({ card }: { card: VerdictCard }) {
           </div>
         )}
 
+        {/* Evidence citations (text claim checks) */}
+        {card.source_citations.length > 0 && (
+          <div className="space-y-2 border-t border-white/10 pt-4">
+            <p className="font-mono text-[11px] uppercase tracking-widest text-zinc-500">Evidence</p>
+            <ul className="space-y-2">
+              {card.source_citations.map((c, i) => (
+                <li key={`${c.chunk_id}-${i}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <a
+                      href={c.source_url || undefined}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="truncate text-sm font-medium text-zinc-200 hover:underline"
+                    >
+                      {c.source_title || c.publisher}
+                    </a>
+                    <SourceTierBadge tier={c.source_tier ?? 'primary'} />
+                  </div>
+                  {c.excerpt && <p className="mt-1 text-xs leading-relaxed text-zinc-400">“{c.excerpt}”</p>}
+                  <p className="mt-1 text-[10px] uppercase tracking-wider text-zinc-600">
+                    {c.publisher}
+                    {c.published_at ? ` · ${c.published_at}` : ''}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {/* Falsifiability */}
         {card.what_would_change_this && (
           <div className="border-t border-white/10 pt-4">
@@ -124,6 +153,20 @@ export function VerdictPanel({ card }: { card: VerdictCard }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function SourceTierBadge({ tier }: { tier: 'primary' | 'web' }) {
+  const isPrimary = tier === 'primary'
+  return (
+    <span
+      className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-medium uppercase tracking-wider ${
+        isPrimary ? 'bg-emerald-500/15 text-emerald-300' : 'bg-sky-500/15 text-sky-300'
+      }`}
+      title={isPrimary ? 'Trusted primary source' : 'Open-web source (weighted below primary)'}
+    >
+      {isPrimary ? 'Primary' : 'Web'}
+    </span>
   )
 }
 

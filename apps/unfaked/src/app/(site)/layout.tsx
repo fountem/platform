@@ -17,6 +17,8 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
             </Link>
 
             <nav className="flex items-center gap-6">
+              <Link href="/verify" className="hidden text-sm text-ink-secondary transition-colors hover:text-forest-800 sm:block">Check a claim</Link>
+              <Link href="/live" className="hidden text-sm text-ink-secondary transition-colors hover:text-forest-800 sm:block">Live</Link>
               <Link href="/cases" className="hidden text-sm text-ink-secondary transition-colors hover:text-forest-800 sm:block">Archive</Link>
               <Link href="/methodology" className="hidden text-sm text-ink-secondary transition-colors hover:text-forest-800 sm:block">How it works</Link>
               {user ? (
@@ -51,6 +53,9 @@ export default async function SiteLayout({ children }: { children: React.ReactNo
             <div className="flex gap-12 text-sm">
               <div className="space-y-2">
                 <div className="text-xs uppercase tracking-widest text-forest-100/50">Product</div>
+                <Link href="/" className="block text-forest-100/80 hover:text-parchment">Detect a video</Link>
+                <Link href="/verify" className="block text-forest-100/80 hover:text-parchment">Check a claim</Link>
+                <Link href="/live" className="block text-forest-100/80 hover:text-parchment">Live fact-check</Link>
                 <Link href="/cases" className="block text-forest-100/80 hover:text-parchment">Archive</Link>
                 <Link href="/methodology" className="block text-forest-100/80 hover:text-parchment">Methodology</Link>
                 <a href="https://fountem.ai" className="block text-forest-100/80 hover:text-parchment">Fountem</a>

@@ -1,6 +1,6 @@
 # Data Protection Impact Assessment (DPIA) — Fountem / Unfaked
 
-**Last updated:** June 17, 2026 · **Status:** Draft DPIA for counsel/DPO review · **Not legal advice.**
+**Last updated:** June 20, 2026 · **Status:** Draft DPIA for counsel/DPO review · **Not legal advice.**
 **Controller:** Fountem Ltd (England & Wales). **Screening conclusion:** a DPIA is required/
 strongly advisable because the processing involves evaluation/scoring, matters of substantial
 public interest, processing of data relating to political matters, and public-facing
@@ -44,6 +44,28 @@ identifiable people, and touches **politically sensitive** subject matter. Sever
 | Verdict + reasoning + sources | Yes, where it concerns an identifiable politician | Our pipeline (Claude) | Publish result |
 | Account email; usage counts; IP | Yes | User/System | Auth, quota, anti-abuse |
 
+**Unfaked — text claim verification** *(new)*
+| Data | Personal data? | Source | Purpose |
+|---|---|---|---|
+| Claim text submitted | Possibly (may name people / contain personal data) | User submission | Classify, retrieve evidence, evaluate |
+| `claim_hash` (SHA-256 of normalised text) | Indirectly | Derived | Dedup / cache (no plaintext key) |
+| Evidence chunks + citations (corpus + open web) | Public-domain sources; web pages | Corpus + Tavily web search | Ground the verdict |
+| Verdict + reasoning + tiered sources | Yes, where it concerns an identifiable politician | Our pipeline (Claude) | Show / optionally publish a correction pack |
+
+**Unfaked — live fact-checking** *(new — highest-sensitivity flow)*
+| Data | Personal data? | Source | Purpose |
+|---|---|---|---|
+| Live stream URL | Sometimes (channel/person) | User submission | Pull broadcast audio |
+| Transient audio (16 kHz PCM) | Yes — identifiable speech | yt-dlp/ffmpeg → Deepgram | Streaming ASR (not stored) |
+| Transcript chunks + speaker diarisation labels | Yes | Deepgram | Claim extraction, display |
+| Extracted check-worthy claims | Yes (about speakers) | LLM (GPT-4o-mini) | Verify in real time |
+| Provisional live verdicts + confidence | Yes | RAG pipeline | Assistive on-screen signal (not published) |
+| Session metadata (owner, status, counts, signed token) | Yes (owner) | System | Auth, caps, anti-abuse |
+
+> **Live data-minimisation:** raw audio is **processed transiently and never stored** (no
+> recording, no voiceprint/biometric template). Transcripts and live claims are owner-scoped
+> (RLS), carry a **session TTL**, and are **never auto-published, auto-shared, or archived**.
+
 ### 2.2 Special category data (Art.9)
 Verdicts touch **political opinions/positions** — special-category data. We process these in
 relation to **public figures' public statements and party positions** in a **journalistic/
@@ -53,9 +75,12 @@ political opinions, and we instruct users **not to submit personal/sensitive dat
 or URLs (notice on the Fountem privacy page).
 
 ### 2.3 Recipients / processors
-OpenAI (embeddings), Anthropic (Claude verdicts), Hive + Sensity (forensic scoring),
-Supabase (storage/auth, EU/London), Netlify (hosting), AWS (resolver). Each needs an Art.28
-DPA and, where data leaves the UK/EEA, an IDTA/UK Addendum + transfer risk assessment.
+OpenAI (embeddings + claim extraction), Anthropic (Claude verdicts), Hive + Sensity (forensic
+scoring), **Deepgram (streaming ASR + diarisation — live)**, **Tavily (open-web evidence
+search — text/live)**, Supabase (storage/auth, EU/London), Netlify/Vercel (hosting), AWS
+(resolver + live-gateway ECS). Each needs an Art.28 DPA and, where data leaves the UK/EEA, an
+IDTA/UK Addendum + transfer risk assessment. **Deepgram processes identifiable speech**, so its
+DPA + transfer assessment is a launch blocker for the live feature.
 
 ### 2.4 Retention (to be finalised — currently a gap)
 Proposed defaults, subject to counsel:
@@ -113,6 +138,10 @@ the LIA tips against publishing about **private individuals**, which we therefor
 | D-6 | **Re-identification** via the public archive (aggregating URLs/verdicts) | Low–Med | Medium |
 | D-7 | **Security breach** exposing account emails / submissions | Low | High |
 | D-8 | **Inability to honour DSARs/erasure** in time | Medium | Medium |
+| D-9 | **Live provisional verdict** about a named person shown before human review (real-time defamation) | Medium | High |
+| D-10 | **ASR transcription / speaker-attribution error** misattributes a claim | Medium | Medium |
+| D-11 | **Identifiable speech processed** by a US ASR vendor (transfer + special-category) | Medium | Medium |
+| D-12 | **Lower-trust open-web evidence** over-weighted in a verdict | Medium | Medium |
 
 ---
 
@@ -128,6 +157,10 @@ the LIA tips against publishing about **private individuals**, which we therefor
 | D-6 | Archive only public political media; review/removal route; no bulk personal-data linkage | 🟡 |
 | D-7 | RLS on all tables, EU region storage, secret hygiene, breach-response runbook (72h ICO) | 🟡 (RLS ✅; runbook pending) |
 | D-8 | Documented DSAR/erasure workflow + SLA; `privacy@` monitored | 🟡 |
+| D-9 | Verdicts shown **provisional** only; no auto-publish/share/archive; character-attack filter; election-mode human gate for named candidates; one-tap retract; per-minute + per-session caps | 🟡 |
+| D-10 | Diarisation confidence surfaced; neutral "Speaker" label unless high-confidence ID; source transcript shown beside each claim | 🟡 |
+| D-11 | Transient audio (never stored); no voiceprint; Deepgram DPA + IDTA/transfer assessment; session TTL on transcripts | 🔴 |
+| D-12 | Source **tiering** (`primary` vs `web`) on every citation; corpus preferred; confidence reduced for web-only; never definitive on web-only | 🟡 |
 
 ---
 

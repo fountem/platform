@@ -1,6 +1,7 @@
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import globals from 'globals'
+import nextPlugin from '@next/eslint-plugin-next'
 
 export default tseslint.config(
   {
@@ -15,6 +16,19 @@ export default tseslint.config(
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    // Register the Next.js plugin so its rules resolve for the apps (and any
+    // `eslint-disable @next/next/*` directives are recognised). `next lint`
+    // is deprecated; we lint with the flat config directly.
+    files: ['apps/**/*.{ts,tsx}'],
+    plugins: { '@next/next': nextPlugin },
+    rules: {
+      ...nextPlugin.configs.recommended.rules,
+      ...nextPlugin.configs['core-web-vitals'].rules,
+      // App Router only — no `pages/` dir, so this page-link rule is N/A.
+      '@next/next/no-html-link-for-pages': 'off',
+    },
+  },
   {
     languageOptions: {
       globals: { ...globals.node, ...globals.browser },

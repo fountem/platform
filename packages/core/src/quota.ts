@@ -22,12 +22,27 @@ export interface BudgetRow {
 export const DEFAULT_DAILY_LIMITS = {
   unfaked: Number(process.env.UNFAKED_FREE_DAILY_LIMIT ?? 5),
   fountem: Number(process.env.FOUNTEM_FREE_DAILY_LIMIT ?? 10),
+  // Live is far costlier per use (per-minute ASR + many LLM verifications), so
+  // free users get a small number of live SESSIONS per day.
+  unfaked_live: Number(process.env.UNFAKED_LIVE_FREE_DAILY_LIMIT ?? 3),
 } as const
 
 /** Default global daily spend caps per product (hard ceiling). */
 export const DEFAULT_GLOBAL_CAPS = {
   unfaked: Number(process.env.UNFAKED_GLOBAL_DAILY_CAP ?? 2000),
   fountem: Number(process.env.FOUNTEM_GLOBAL_DAILY_CAP ?? 4000),
+  unfaked_live: Number(process.env.UNFAKED_LIVE_GLOBAL_DAILY_CAP ?? 200),
+} as const
+
+/**
+ * Per-session safety caps for live fact-checking. These bound the cost and the
+ * legal exposure of a single live session (ASR minutes + LLM verifications).
+ * Enforced by the live gateway; surfaced to the client so the UI can warn.
+ */
+export const LIVE_SESSION_CAPS = {
+  maxMinutes: Number(process.env.LIVE_MAX_SESSION_MINUTES ?? 90),
+  maxClaims: Number(process.env.LIVE_MAX_SESSION_CLAIMS ?? 200),
+  maxClaimsPerMinute: Number(process.env.LIVE_MAX_CLAIMS_PER_MINUTE ?? 12),
 } as const
 
 /**
